@@ -15,12 +15,11 @@ async function bootstrap() {
     )
     .setVersion('1.0')
     .addTag('auth', 'Authentication endpoints')
-    .addTag('users', 'User management endpoints')
     .addTag('students', 'Student management endpoints')
     .addTag('teachers', 'Teacher management endpoints')
     .addTag('attendance', 'Attendance tracking endpoints')
-    .addTag('grades', 'Grade management endpoints')
     .addTag('schedule', 'Schedule management endpoints')
+    .addTag('face-recognition', 'Face recognition endpoints')
     .addBearerAuth(
       {
         type: 'http',

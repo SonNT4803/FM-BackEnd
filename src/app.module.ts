@@ -35,7 +35,7 @@ import { GradecategoryModule } from './grades/gradecategory/gradecategory.module
 import { ExamtypeModule } from './center/exam/examtype/examtype.module';
 import { ExamScheduleMasterModule } from './center/exam/exam_schedule_master/exam_schedule_master.module';
 import { ExamRoomModule } from './center/exam/exam_room/exam_room.module';
-import { FaceRecognitionModule } from './face-recognition/face-recognition.module';
+import { FaceApiModule } from './face-api/face-api.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { StudentResitModule } from './center/student-resit/student-resit.module';
 
@@ -88,7 +88,7 @@ import { StudentResitModule } from './center/student-resit/student-resit.module'
     ExamtypeModule,
     ExamScheduleMasterModule,
     ExamRoomModule,
-    FaceRecognitionModule,
+    FaceApiModule,
     EvaluationModule,
     StudentResitModule,
   ],

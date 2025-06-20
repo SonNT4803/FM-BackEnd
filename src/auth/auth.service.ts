@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt'; // Thư viện mã hóa mật khẩu
+import * as bcrypt from 'bcryptjs'; // Thư viện mã hóa mật khẩu
 import { UserRoleService } from 'src/user-role/user-role.service';
 import { UserService } from '../user/user.service';
 import { RolePermissionService } from './../role-permission/role-permission.service';

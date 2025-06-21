@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Student } from '../entities/center/student.entity';
@@ -8,6 +8,7 @@ import * as faceapi from 'face-api.js';
 import { Canvas, Image, ImageData } from 'canvas';
 import * as path from 'path';
 import * as fs from 'fs';
+import { Schedule } from 'src/entities/schedule.entity';
 
 // Configure face-api.js to use canvas
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData } as any);
@@ -22,6 +23,8 @@ export class FaceApiService {
     private studentRepository: Repository<Student>,
     @InjectRepository(Class)
     private classRepository: Repository<Class>,
+    @InjectRepository(Schedule)
+    private scheduleRepository: Repository<Schedule>,
     private readonly attendanceService: AttendanceService,
   ) {
     // Ensure models directory exists
@@ -124,7 +127,12 @@ export class FaceApiService {
     }
   }
 
-  async verifyFace(image: string, studentId: number): Promise<boolean> {
+  async verifyFace(
+    image: string,
+    studentId: number,
+    scheduleId: number,
+    note?: string,
+  ): Promise<any> {
     try {
       await this.loadModels();
 
@@ -138,25 +146,18 @@ export class FaceApiService {
         );
       }
 
-      // Validate input image
       if (!image || !image.startsWith('data:image/')) {
         throw new BadRequestException('Ảnh đầu vào không hợp lệ');
       }
 
-      // Không kiểm tra avatar phải là base64 nữa
-
-      console.log('Loading input image...');
       const inputImage = await this.loadImage(image);
-      console.log('Loading reference image...');
       const referenceImage = await this.loadImage(student.avatar);
 
-      console.log('Detecting faces in input image...');
       const inputDetection = await faceapi
         .detectSingleFace(inputImage as any)
         .withFaceLandmarks()
         .withFaceDescriptor();
 
-      console.log('Detecting faces in reference image...');
       const referenceDetection = await faceapi
         .detectSingleFace(referenceImage as any)
         .withFaceLandmarks()
@@ -173,11 +174,46 @@ export class FaceApiService {
         referenceDetection.descriptor,
       );
 
-      console.log('Face distance:', distance);
-
-      // Ngưỡng khoảng cách để xác định là cùng một người
       const threshold = 0.6;
-      return distance < threshold;
+      const verified = distance < threshold;
+
+      if (!verified) {
+        return {
+          statusCode: HttpStatus.OK,
+          message: 'Xác thực khuôn mặt thất bại',
+          data: { verified: false },
+        };
+      }
+
+      const schedule = await this.scheduleRepository.findOne({
+        where: { id: scheduleId },
+        relations: ['class', 'teacher'],
+      });
+
+      if (!schedule) {
+        throw new BadRequestException(
+          `Không tìm thấy lịch học với ID ${scheduleId}`,
+        );
+      }
+
+      const attendanceData = {
+        studentId,
+        classId: schedule.class.id,
+        scheduleId: schedule.id,
+        teacherId: schedule.teacher.id,
+        status: 1,
+        note: note || 'Điểm danh bằng xác thực khuôn mặt',
+      };
+
+      await this.attendanceService.markAttendance(attendanceData);
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Xác thực khuôn mặt thành công',
+        data: {
+          verified: true,
+        },
+      };
     } catch (error) {
       console.error('Error in verifyFace:', error);
       if (error instanceof BadRequestException) {

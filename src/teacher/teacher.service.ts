@@ -94,7 +94,7 @@ export class TeacherService {
 
   async findTeacherByUserId(userId: number): Promise<Teacher> {
     return await this.teacherRepository.findOne({
-      where: { id: userId },
+      where: { userId: userId },
     });
   }
 }

@@ -28,10 +28,12 @@ export class AzureFaceService {
   }
 
   private initializeAzureFaceClient() {
-    const subscriptionKey = process.env.AZURE_FACE_SUBSCRIPTION_KEY;
-    const endpoint = process.env.AZURE_FACE_ENDPOINT;
-
+    const subscriptionKey =
+      '5QpqYCVDdb7FYCxwNEdGc3EMlJrMbej87sLhrfNAVY86J4mwxKfmJQQJ99BFACqBBLyXJ3w3AAAKACOGDHWO';
+    const endpoint = 'https://fmfpt-azure-api.cognitiveservices.azure.com/';
+    console.log(subscriptionKey, endpoint);
     if (!subscriptionKey || !endpoint) {
+      console.log(subscriptionKey, endpoint);
       console.warn(
         'Azure Face API credentials not found. Please set AZURE_FACE_SUBSCRIPTION_KEY and AZURE_FACE_ENDPOINT environment variables.',
       );

@@ -8,7 +8,7 @@ import * as faceapi from 'face-api.js';
 import { Canvas, Image, ImageData } from 'canvas';
 import * as path from 'path';
 import * as fs from 'fs';
-
+import * as sharp from 'sharp';
 // Configure face-api.js to use canvas
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData } as any);
 
@@ -56,7 +56,18 @@ export class FaceApiService {
       // Nếu là base64 data url
       if (imageOrPath.startsWith('data:image/')) {
         const base64Data = imageOrPath.replace(/^data:image\/\w+;base64,/, '');
-        const buffer = Buffer.from(base64Data, 'base64');
+        let buffer = Buffer.from(base64Data, 'base64');
+        // Resize và auto-orient bằng sharp
+        buffer = await sharp(buffer)
+          .rotate() // auto-orient theo EXIF
+          .resize({ width: 800, height: 800, fit: 'inside' }) // resize max 800px
+          .toBuffer();
+        // Lưu file debug
+        fs.writeFileSync('debug_input.jpg', buffer);
+        console.log(
+          'Debug: Saved input image to debug_input.jpg, size:',
+          buffer.length,
+        );
         return await new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => resolve(img);
@@ -283,7 +294,44 @@ export class FaceApiService {
 
       // Ngưỡng khoảng cách để xác định là cùng một người
       const threshold = 0.6;
-      return distance < threshold;
+      const matched = distance < threshold;
+
+      // Nếu matched, lưu điểm danh vào DB
+      if (matched) {
+        // Lấy classId và teacherId từ student và schedule nếu cần
+        const classId = student.class ? student.class.id : undefined;
+        // Nếu cần lấy teacherId từ schedule hoặc truyền từ FE, bạn có thể bổ sung logic lấy teacherId phù hợp
+        let teacherId = undefined;
+        // Nếu student có teacher hoặc bạn có thể lấy từ schedule, hãy bổ sung logic ở đây
+        // Ở đây tạm để undefined, bạn cần truyền đúng teacherId từ FE hoặc lấy từ DB
+        if (!classId) {
+          console.warn('Không tìm thấy classId cho student');
+        }
+        if (!teacherId) {
+          console.warn(
+            'Bạn cần truyền teacherId vào verifyFace hoặc lấy từ schedule',
+          );
+        }
+        await this.attendanceService.markAttendance({
+          classId,
+          studentId,
+          teacherId,
+          scheduleId,
+          status: 1, // 1 = điểm danh thành công
+          note,
+        });
+      }
+      return {
+        success: matched,
+        message: matched
+          ? 'Điểm danh thành công'
+          : 'Khuôn mặt không trùng khớp',
+        studentId,
+        scheduleId,
+        matched,
+        distance,
+        timestamp: new Date().toISOString(),
+      };
     } catch (error) {
       console.error('Error in verifyFace:', error);
       if (error instanceof BadRequestException) {

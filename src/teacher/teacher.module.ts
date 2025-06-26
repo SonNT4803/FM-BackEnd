@@ -11,4 +11,4 @@ import { Module } from '@nestjs/common';
   providers: [TeacherService],
   controllers: [TeacherController],
 })
-export class TeacherModule { }
+export class TeacherModule {}

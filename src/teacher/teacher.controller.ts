@@ -13,7 +13,7 @@ import { TeacherService } from './teacher.service';
 
 @Controller('teachers')
 export class TeacherController {
-  constructor(private readonly teacherService: TeacherService) { }
+  constructor(private readonly teacherService: TeacherService) {}
 
   @Post()
   async create(@Body() createTeacherDto: CreateTeacherDto): Promise<Teacher> {
@@ -41,5 +41,10 @@ export class TeacherController {
   @Delete(':id')
   remove(@Param('id') id: number): Promise<void> {
     return this.teacherService.remove(id);
+  }
+
+  @Get('user/:id')
+  findTeacherByUserId(@Param('id') id: number): Promise<Teacher> {
+    return this.teacherService.findTeacherByUserId(id);
   }
 }

@@ -162,39 +162,54 @@ export class AttendanceService {
     await this.attendanceRepository.remove(attendance);
   }
 
-  async findByScheduleId(scheduleId: number): Promise<AttendanceDto[]> {
+  async findByScheduleId(scheduleId: number): Promise<any> {
+    // Lấy schedule với teacher và class một lần duy nhất
     const schedule = await this.scheduleRepository.findOne({
       where: { id: scheduleId },
       relations: ['class', 'teacher'],
     });
+
     if (!schedule) {
       throw new NotFoundException(`Schedule with ID ${scheduleId} not found`);
     }
 
+    // Lấy tất cả students của class một lần
     const students = await this.studentRepository.find({
       where: { class: { id: schedule.class.id } },
       order: { id: 'ASC' },
     });
 
+    // Lấy tất cả attendances cho schedule này một lần
     const attendances = await this.attendanceRepository.find({
       where: { schedule: { id: scheduleId } },
       relations: ['student'],
     });
 
-    const attendanceDtos: AttendanceDto[] = students.map((student) => {
-      const foundAttendance = attendances.find(
-        (att) => att.student.id === student.id,
-      );
+    // Tạo map để tìm kiếm nhanh hơn
+    const attendanceMap = new Map(
+      attendances.map((att) => [att.student.id, att]),
+    );
+
+    // Tạo danh sách students với attendance status
+    const studentsWithAttendance = students.map((student) => {
+      const foundAttendance = attendanceMap.get(student.id);
       return {
-        teacher: schedule.teacher,
-        class: schedule.class,
         student: student,
         status: foundAttendance ? foundAttendance.status : 0,
         note: foundAttendance ? foundAttendance.note : null,
       };
     });
 
-    return attendanceDtos;
+    // Trả về format tối ưu: teacher và class chỉ một lần
+    return {
+      teacher: schedule.teacher,
+      class: schedule.class,
+      scheduleId: scheduleId,
+      students: studentsWithAttendance,
+      totalStudents: students.length,
+      totalAttended: studentsWithAttendance.filter((s) => s.status === 1)
+        .length,
+    };
   }
 
   async markMultipleAttendance(

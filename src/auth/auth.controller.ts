@@ -1,4 +1,11 @@
-import { Body, Controller, Post, UnauthorizedException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  UnauthorizedException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Public } from './guard/public.decorator';
 import { ApiTags } from '@nestjs/swagger';
@@ -15,10 +22,16 @@ export class AuthController {
       body.username,
       body.password,
     );
-    if (user) {
-      return this.authService.login(user);
+    const userEntity = await this.authService.userService.findUserByUsername(
+      body.username,
+    );
+    if (!userEntity) {
+      throw new NotFoundException('Tài khoản không tồn tại');
     }
-    throw new UnauthorizedException();
+    if (!user) {
+      throw new BadRequestException('Sai mật khẩu');
+    }
+    return this.authService.login(user);
   }
 
   @Post('register')

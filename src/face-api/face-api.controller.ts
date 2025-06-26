@@ -20,15 +20,21 @@ export class FaceApiController {
   @Post('verify-face')
   @ApiBearerAuth('JWT-auth')
   async verifyFace(
-    @Body() body: { image: string; studentId: number },
-  ): Promise<{ verified: boolean }> {
-    const verified = await this.faceApiService.verifyFace(
+    @Body()
+    body: {
+      image: string;
+      studentId: number;
+      scheduleId: number;
+      note?: string;
+    },
+  ) {
+    return await this.faceApiService.verifyFace(
       body.image,
       body.studentId,
+      body.scheduleId,
+      body.note,
     );
-    return { verified };
   }
-
   @Post('verify-class')
   @ApiBearerAuth('JWT-auth')
   async verifyClass(

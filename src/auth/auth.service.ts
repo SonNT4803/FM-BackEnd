@@ -10,7 +10,7 @@ import { User } from 'src/entities/auth/user.entity';
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly userService: UserService,
+    public readonly userService: UserService,
     private readonly jwtService: JwtService,
     private readonly userRoleService: UserRoleService,
     private readonly rolePermissionService: RolePermissionService,

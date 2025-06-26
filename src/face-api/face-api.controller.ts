@@ -35,7 +35,6 @@ export class FaceApiController {
       body.note,
     );
   }
-
   @Post('verify-class')
   @ApiBearerAuth('JWT-auth')
   async verifyClass(

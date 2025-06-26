@@ -109,21 +109,97 @@ export class FaceApiService {
         };
       }
 
-      const avatarStart = student.avatar.substring(0, 50);
+      const avatarStart = student.avatar.substring(0, 100);
       const isDataUrl = student.avatar.startsWith('data:image/');
+      const isFilePath =
+        student.avatar.startsWith('/uploads/') ||
+        student.avatar.startsWith('uploads/');
 
       return {
         hasAvatar: true,
         isDataUrl,
+        isFilePath,
         avatarStart,
         avatarLength: student.avatar.length,
+        fullAvatarPath: student.avatar,
         message: isDataUrl
-          ? 'Ảnh đúng format'
-          : 'Ảnh không đúng format (cần bắt đầu bằng data:image/)',
+          ? 'Ảnh đúng format (data URL)'
+          : isFilePath
+            ? 'Ảnh đúng format (file path) - có thể sử dụng cho face verification'
+            : 'Ảnh không đúng format (cần là data URL hoặc file path)',
       };
     } catch (error) {
       console.error('Error in testAvatarFormat:', error);
       throw new BadRequestException(`Lỗi kiểm tra ảnh: ${error.message}`);
+    }
+  }
+
+  // Method để test face detection với ảnh avatar đã lưu
+  async testFaceDetection(studentId: number): Promise<any> {
+    try {
+      console.log('=== TEST FACE DETECTION ===');
+      console.log('Student ID:', studentId);
+
+      await this.loadModels();
+
+      const student = await this.studentRepository.findOne({
+        where: { id: studentId },
+      });
+
+      if (!student) {
+        throw new BadRequestException('Không tìm thấy sinh viên');
+      }
+
+      if (!student.avatar) {
+        return {
+          success: false,
+          message: 'Sinh viên không có ảnh đại diện',
+        };
+      }
+
+      console.log('Student avatar path:', student.avatar);
+
+      console.log('Loading reference image...');
+      const referenceImage = await this.loadImage(student.avatar);
+      console.log('Reference image loaded successfully');
+
+      console.log('Detecting face in reference image...');
+      const referenceDetection = await faceapi
+        .detectSingleFace(referenceImage as any)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!referenceDetection) {
+        console.log('No face detected in reference image');
+        return {
+          success: false,
+          message: 'Không phát hiện được khuôn mặt trong ảnh đại diện',
+          avatarPath: student.avatar,
+        };
+      }
+
+      console.log('Face detected in reference image');
+      return {
+        success: true,
+        message: 'Phát hiện được khuôn mặt trong ảnh đại diện',
+        avatarPath: student.avatar,
+        faceDetection: {
+          confidence: referenceDetection.detection.score,
+          landmarks: referenceDetection.landmarks
+            ? 'Available'
+            : 'Not available',
+          descriptor: referenceDetection.descriptor
+            ? 'Available'
+            : 'Not available',
+        },
+      };
+    } catch (error) {
+      console.error('Error in testFaceDetection:', error);
+      return {
+        success: false,
+        message: `Lỗi test face detection: ${error.message}`,
+        error: error.message,
+      };
     }
   }
 
@@ -134,6 +210,18 @@ export class FaceApiService {
     note?: string,
   ): Promise<any> {
     try {
+      console.log('=== FACE VERIFICATION START ===');
+      console.log('Student ID:', studentId);
+      console.log('Schedule ID:', scheduleId);
+      console.log(
+        'Input image type:',
+        image
+          ? image.startsWith('data:image/')
+            ? 'data URL'
+            : 'file path'
+          : 'null',
+      );
+
       await this.loadModels();
 
       const student = await this.studentRepository.findOne({
@@ -146,28 +234,48 @@ export class FaceApiService {
         );
       }
 
-      if (!image || !image.startsWith('data:image/')) {
+      console.log('Student avatar path:', student.avatar);
+
+      // Remove strict data URL validation - let loadImage handle both formats
+      if (!image) {
         throw new BadRequestException('Ảnh đầu vào không hợp lệ');
       }
 
+      console.log('Loading input image...');
       const inputImage = await this.loadImage(image);
-      const referenceImage = await this.loadImage(student.avatar);
+      console.log('Input image loaded successfully');
 
+      console.log('Loading reference image...');
+      const referenceImage = await this.loadImage(student.avatar);
+      console.log('Reference image loaded successfully');
+
+      console.log('Detecting face in input image...');
       const inputDetection = await faceapi
         .detectSingleFace(inputImage as any)
         .withFaceLandmarks()
         .withFaceDescriptor();
 
+      if (!inputDetection) {
+        console.log('No face detected in input image');
+        throw new BadRequestException(
+          'Không phát hiện được khuôn mặt trong ảnh đầu vào',
+        );
+      }
+      console.log('Face detected in input image');
+
+      console.log('Detecting face in reference image...');
       const referenceDetection = await faceapi
         .detectSingleFace(referenceImage as any)
         .withFaceLandmarks()
         .withFaceDescriptor();
 
-      if (!inputDetection || !referenceDetection) {
+      if (!referenceDetection) {
+        console.log('No face detected in reference image');
         throw new BadRequestException(
-          'Không phát hiện được khuôn mặt trong ảnh',
+          'Không phát hiện được khuôn mặt trong ảnh đại diện',
         );
       }
+      console.log('Face detected in reference image');
 
       const distance = faceapi.euclideanDistance(
         inputDetection.descriptor,
@@ -244,7 +352,7 @@ export class FaceApiService {
       }
 
       // Validate input image
-      if (!image || !image.startsWith('data:image/')) {
+      if (!image) {
         throw new BadRequestException('Ảnh đầu vào không hợp lệ');
       }
 

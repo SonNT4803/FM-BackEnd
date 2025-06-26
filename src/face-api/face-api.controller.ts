@@ -4,7 +4,6 @@ import { FaceApiService } from './face-api.service';
 
 @ApiTags('face-api')
 @Controller('face-api')
-@ApiBearerAuth('JWT-auth')
 export class FaceApiController {
   constructor(private readonly faceApiService: FaceApiService) {}
 
@@ -13,7 +12,13 @@ export class FaceApiController {
     return this.faceApiService.testAvatarFormat(studentId);
   }
 
+  @Get('test-face-detection/:studentId')
+  async testFaceDetection(@Param('studentId') studentId: number) {
+    return this.faceApiService.testFaceDetection(studentId);
+  }
+
   @Post('verify-face')
+  @ApiBearerAuth('JWT-auth')
   async verifyFace(
     @Body() body: { image: string; studentId: number },
   ): Promise<{ verified: boolean }> {
@@ -25,6 +30,7 @@ export class FaceApiController {
   }
 
   @Post('verify-class')
+  @ApiBearerAuth('JWT-auth')
   async verifyClass(
     @Body()
     body: {

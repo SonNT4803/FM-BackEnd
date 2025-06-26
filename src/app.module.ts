@@ -36,6 +36,7 @@ import { ExamtypeModule } from './center/exam/examtype/examtype.module';
 import { ExamScheduleMasterModule } from './center/exam/exam_schedule_master/exam_schedule_master.module';
 import { ExamRoomModule } from './center/exam/exam_room/exam_room.module';
 import { FaceApiModule } from './face-api/face-api.module';
+import { AzureFaceModule } from './azure-face/azure-face.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { StudentResitModule } from './center/student-resit/student-resit.module';
 
@@ -89,6 +90,7 @@ import { StudentResitModule } from './center/student-resit/student-resit.module'
     ExamScheduleMasterModule,
     ExamRoomModule,
     FaceApiModule,
+    AzureFaceModule,
     EvaluationModule,
     StudentResitModule,
   ],

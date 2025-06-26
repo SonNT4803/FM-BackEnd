@@ -91,4 +91,10 @@ export class TeacherService {
   async remove(id: number): Promise<void> {
     await this.teacherRepository.delete(id);
   }
+
+  async findTeacherByUserId(userId: number): Promise<Teacher> {
+    return await this.teacherRepository.findOne({
+      where: { id: userId },
+    });
+  }
 }

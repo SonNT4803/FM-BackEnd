@@ -26,6 +26,7 @@
     "@azure/cognitiveservices-face": "^5.0.0",
     "@azure/ms-rest-azure-js": "^2.1.0",
     "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^10.0.0",
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",

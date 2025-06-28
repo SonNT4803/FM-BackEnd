@@ -39,18 +39,22 @@ import { FaceApiModule } from './face-api/face-api.module';
 import { AzureFaceModule } from './azure-face/azure-face.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { StudentResitModule } from './center/student-resit/student-resit.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+     ConfigModule.forRoot({
+      isGlobal: true,        
+    }),
     TypeOrmModule.forRoot({
       type: 'mysql',
-      host: 'localhost',
-      port: 3306,
-      username: 'root',
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT, 10),
+      username: process.env.DB_USER,
       // password: 'lht@39412990',
-      password: '123456',
+      password: process.env.DB_PASS,
       entities: [__dirname + '/entities/**/*.entity{.ts,.js}'],
-      database: 'attendence_system_v2',
+      database: process.env.DB_NAME,
       synchronize: true,
       // logging: true,
     }),

@@ -1,0 +1,27 @@
+name: Deploy Backend to VPS
+
+on:
+  push:
+    branches:
+      - master  # Hoặc branch bạn muốn deploy (develop, staging,...)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASS }}
+          port: 22
+          script: |
+            cd /home/your-app-folder/fm-backend
+            git pull origin main
+            docker compose down
+            docker compose up --build -d

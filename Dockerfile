@@ -1,31 +1,21 @@
-FROM node:18-alpine
+FROM node:18
 
 WORKDIR /app
 
-# Install dependencies first (better caching)
+# Copy file yarn.lock và package.json
 COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile --production=false
 
-# Copy source code
+# Cài đặt dependencies bằng yarn
+RUN yarn install
+
+# Copy toàn bộ mã nguồn
 COPY . .
 
-# Build the application
+# Build project NestJS
 RUN yarn build
 
-# Remove dev dependencies to reduce image size
-RUN yarn install --frozen-lockfile --production=true && yarn cache clean
-
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nestjs -u 1001
-USER nestjs
-
-# Expose port
+# Mở cổng 5000
 EXPOSE 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:5000/health || exit 1
-
-# Start the application
+# Chạy ứng dụng ở chế độ production
 CMD ["yarn", "start:prod"]

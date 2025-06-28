@@ -57,8 +57,11 @@ $ yarn run test:e2e
 # test coverage
 $ yarn run test:cov
 ```
+# Chạy docker
+docker-compose up --build
 
 ## Resources
+
 
 Check out a few resources that may come in handy when working with NestJS:
 

@@ -63,7 +63,17 @@ export class UserService {
     username: string,
     password: string,
     roleId: number,
+    email?: string,
   ): Promise<User> {
+    // Check if username already exists
+    const existingUser = await this.userRepository.findOne({
+      where: { username },
+    });
+
+    if (existingUser) {
+      throw new Error(`User with username '${username}' already exists`);
+    }
+
     // Tìm xem role có tồn tại không
     const role = await this.roleRepository.findOne({
       where: { id: roleId },
@@ -73,10 +83,13 @@ export class UserService {
       throw new Error(`Role with ID ${roleId} does not exist`);
     }
 
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const user = this.userRepository.create({
       username,
-      password,
-      email: username + '@example.com',
+      password: hashedPassword,
+      email: email || username + '@example.com',
     });
     const savedUser = await this.userRepository.save(user);
 

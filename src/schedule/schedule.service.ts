@@ -323,6 +323,30 @@ export class ScheduleService {
     });
     return scheduleDtos;
   }
+
+  async getByStudentId(userId: number, date: string): Promise<ScheduleDto[]> {
+    const formatDate = moment(date).format('YYYY-MM-DD').toString();
+    const schedules = await this.scheduleRepository.find({
+      where: { date: formatDate, class: { students: { id: userId } } },
+      relations: ['shift', 'class', 'classroom', 'teacher', 'module'],
+    });
+
+    const scheduleDtos: ScheduleDto[] = schedules.map((schedule) => {
+      const scheduleDto = new ScheduleDto();
+      scheduleDto.id = schedule.id;
+      scheduleDto.shift = schedule.shift;
+      scheduleDto.class = schedule.class;
+      scheduleDto.classroom = schedule.classroom;
+      scheduleDto.teacher = schedule.teacher;
+      scheduleDto.date = moment(schedule.date).format('DD-MM-YYYY');
+      scheduleDto.module = schedule.module;
+      scheduleDto.attendances = schedule.attendances;
+      scheduleDto.dayOfWeek = schedule.dayOfWeek;
+      return scheduleDto;
+    });
+    return scheduleDtos;
+  }
+
   async findByClassId(classId: number): Promise<Schedule[]> {
     return this.scheduleRepository.find({
       where: { class: { id: classId } },

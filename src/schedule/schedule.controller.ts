@@ -24,12 +24,12 @@ import {
   AutoGenerateScheduleDto,
   ClassDayDto,
   CreateScheduleDto,
-  FindAvailableClassroomsDto,
   ScheduleCountByDayDto,
   ScheduleDto,
   UpdateScheduleDto,
 } from './dto/schedule.dto';
 import { ScheduleService } from './schedule.service';
+import { AttendanceService } from 'src/attendance/attendance.service';
 
 @Controller('schedules')
 @ApiTags('Schedule')
@@ -39,6 +39,7 @@ export class ScheduleController {
     @InjectRepository(Teacher)
     private readonly teacherRepository: Repository<Teacher>,
     private readonly jwtService: JwtService,
+    private readonly attendanceService: AttendanceService,
   ) {}
 
   @Post()
@@ -133,6 +134,15 @@ export class ScheduleController {
   ): Promise<ScheduleDto[]> {
     const teacherId = await this.extractTeacherIdFromToken(request);
     return this.scheduleService.getByTeacherId(teacherId, date);
+  }
+
+  @Get('student/:userId/date/:date')
+  async getByStudentId(
+    @Param('date') date: string,
+    @Param('userId') userId: number,
+  ): Promise<ScheduleDto[]> {
+    const student = await this.attendanceService.findStudentByUserId(userId);
+    return this.scheduleService.getByStudentId(student.id, date);
   }
 
   @Get('count-by-day/:date')

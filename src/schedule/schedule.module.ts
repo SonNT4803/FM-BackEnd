@@ -12,17 +12,27 @@ import { AuthModule } from 'src/auth/auth.module';
 import { JwtModule } from '@nestjs/jwt';
 import { jwtConstants } from 'src/auth/const';
 import { Courses } from 'src/entities/courses.entity';
+import { AttendanceModule } from 'src/attendance/attendance.module';
 
 @Module({
   imports: [
     AuthModule,
-    TypeOrmModule.forFeature([Schedule, Class, Teacher, Shift, me, Classroom, Courses]),
+    TypeOrmModule.forFeature([
+      Schedule,
+      Class,
+      Teacher,
+      Shift,
+      me,
+      Classroom,
+      Courses,
+    ]),
     JwtModule.register({
       secret: jwtConstants, // Thay bằng bí mật của bạn
       signOptions: { expiresIn: '365d' }, // Thời gian sống của token
     }),
+    AttendanceModule,
   ],
   providers: [ScheduleService],
   controllers: [ScheduleController],
 })
-export class ScheduleModule { }
+export class ScheduleModule {}

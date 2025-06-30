@@ -23,3 +23,118 @@ export interface AttendanceDto {
   class: Class;
   teacher: Teacher;
 }
+
+// DTO cho student attendance history
+export class StudentAttendanceHistoryDto {
+  student: {
+    id: number;
+    name: string;
+    studentId: string;
+    class: Class;
+  };
+  statistics: {
+    totalSessions: number;
+    attendedSessions: number;
+    absentSessions: number;
+    lateSessions: number;
+    attendanceRate: number;
+  };
+  attendanceHistory: Array<{
+    id: number;
+    status: number;
+    note: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    schedule: {
+      id: number;
+      date: string;
+      dayOfWeek: string;
+      module: any;
+    };
+    teacher: {
+      id: number;
+      name: string;
+    };
+    class: {
+      id: number;
+      name: string;
+    };
+  }>;
+}
+
+// DTO cho student attendance by month
+export class StudentAttendanceByMonthDto {
+  student: {
+    id: number;
+    name: string;
+    studentId: string;
+    class: Class;
+  };
+  period: {
+    year: number;
+    month: number;
+    monthName: string;
+  };
+  statistics: {
+    totalSessions: number;
+    attendedSessions: number;
+    absentSessions: number;
+    lateSessions: number;
+    attendanceRate: number;
+  };
+  attendanceHistory: Array<{
+    id: number;
+    status: number;
+    note: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    schedule: {
+      id: number;
+      date: string;
+      dayOfWeek: string;
+      module: any;
+    };
+    teacher: {
+      id: number;
+      name: string;
+    };
+    class: {
+      id: number;
+      name: string;
+    };
+  }>;
+}
+
+// DTO cho student attendance by subject
+export class StudentAttendanceBySubjectDto {
+  student: {
+    id: number;
+    name: string;
+    studentId: string;
+    class: Class;
+  };
+  attendanceBySubject: Array<{
+    subject: string;
+    totalSessions: number;
+    attendedSessions: number;
+    absentSessions: number;
+    lateSessions: number;
+    attendanceRate: number;
+    sessions: Array<{
+      id: number;
+      status: number;
+      note: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      schedule: {
+        id: number;
+        date: string;
+        dayOfWeek: string;
+      };
+      teacher: {
+        id: number;
+        name: string;
+      };
+    }>;
+  }>;
+}

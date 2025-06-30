@@ -18,7 +18,7 @@ export class RoleController {
 
   @Get()
   @UseGuards(RolesGuard)
-  @Roles('Admin')
+  @Roles('ADMIN')
   async findAllRoles(): Promise<RoleDto[]> {
     return this.roleService.findAllRoles();
   }

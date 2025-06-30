@@ -4,10 +4,15 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import * as bodyParser from 'body-parser';
+import { SeedService } from './seeds/seed.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  
+
+  // Run seeds automatically when server starts
+  const seedService = app.get(SeedService);
+  await seedService.runAllSeeds();
+
   const config = new DocumentBuilder()
     .setTitle('School Management API')
     .setDescription('API documentation')
@@ -27,7 +32,7 @@ async function bootstrap() {
 
   app.use(bodyParser.json({ limit: '10mb' }));
   app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
-  
+
   await app.listen(5000);
 }
 bootstrap();

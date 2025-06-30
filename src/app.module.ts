@@ -40,11 +40,12 @@ import { AzureFaceModule } from './azure-face/azure-face.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { StudentResitModule } from './center/student-resit/student-resit.module';
 import { ConfigModule } from '@nestjs/config';
+import { SeedModule } from './seeds/seed.module';
 
 @Module({
   imports: [
-     ConfigModule.forRoot({
-      isGlobal: true,        
+    ConfigModule.forRoot({
+      isGlobal: true,
     }),
     TypeOrmModule.forRoot({
       type: 'mysql',
@@ -97,6 +98,7 @@ import { ConfigModule } from '@nestjs/config';
     AzureFaceModule,
     EvaluationModule,
     StudentResitModule,
+    SeedModule,
   ],
 })
 export class AppModule {}

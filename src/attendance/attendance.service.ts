@@ -320,4 +320,255 @@ export class AttendanceService {
 
     return attendances;
   }
+
+  // Method để student xem lịch sử điểm danh của mình
+  async getStudentAttendanceHistory(studentId: number): Promise<any> {
+    // Kiểm tra student có tồn tại không
+    const student = await this.studentRepository.findOne({
+      where: { id: studentId },
+      relations: ['class'],
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student with ID ${studentId} not found`);
+    }
+
+    // Lấy tất cả attendance records của student
+    const attendances = await this.attendanceRepository.find({
+      where: { student: { id: studentId } },
+      relations: ['schedule', 'teacher', 'class'],
+      order: { updatedAt: 'DESC' },
+    });
+
+    // Tính toán thống kê
+    const totalSessions = attendances.length;
+    const attendedSessions = attendances.filter(
+      (att) => att.status === 1,
+    ).length;
+    const absentSessions = attendances.filter((att) => att.status === 0).length;
+    const lateSessions = attendances.filter((att) => att.status === 2).length;
+    const attendanceRate =
+      totalSessions > 0 ? (attendedSessions / totalSessions) * 100 : 0;
+
+    return {
+      student: {
+        id: student.id,
+        name: student.name,
+        studentId: student.studentId,
+        class: student.class,
+      },
+      statistics: {
+        totalSessions,
+        attendedSessions,
+        absentSessions,
+        lateSessions,
+        attendanceRate: Math.round(attendanceRate * 100) / 100, // Làm tròn 2 chữ số thập phân
+      },
+      attendanceHistory: attendances.map((att) => ({
+        id: att.id,
+        status: att.status,
+        note: att.note,
+        createdAt: att.updatedAt,
+        updatedAt: att.updatedAt,
+        schedule: {
+          id: att.schedule.id,
+          date: att.schedule.date,
+          dayOfWeek: att.schedule.dayOfWeek,
+          module: att.schedule.module,
+        },
+        teacher: {
+          id: att.teacher.id,
+          name: att.teacher.name,
+        },
+        class: {
+          id: att.class.id,
+          name: att.class.name,
+        },
+      })),
+    };
+  }
+
+  // Method để student xem điểm danh theo tháng
+  async getStudentAttendanceByMonth(
+    studentId: number,
+    year: number,
+    month: number,
+  ): Promise<any> {
+    // Kiểm tra student có tồn tại không
+    const student = await this.studentRepository.findOne({
+      where: { id: studentId },
+      relations: ['class'],
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student with ID ${studentId} not found`);
+    }
+
+    // Tạo date range cho tháng
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    // Lấy attendance records trong tháng
+    const attendances = await this.attendanceRepository
+      .createQueryBuilder('attendance')
+      .leftJoinAndSelect('attendance.schedule', 'schedule')
+      .leftJoinAndSelect('attendance.teacher', 'teacher')
+      .leftJoinAndSelect('attendance.class', 'class')
+      .where('attendance.student.id = :studentId', { studentId })
+      .andWhere('schedule.date >= :startDate', { startDate })
+      .andWhere('schedule.date <= :endDate', { endDate })
+      .orderBy('schedule.date', 'ASC')
+      .getMany();
+
+    // Tính toán thống kê theo tháng
+    const totalSessions = attendances.length;
+    const attendedSessions = attendances.filter(
+      (att) => att.status === 1,
+    ).length;
+    const absentSessions = attendances.filter((att) => att.status === 0).length;
+    const lateSessions = attendances.filter((att) => att.status === 2).length;
+    const attendanceRate =
+      totalSessions > 0 ? (attendedSessions / totalSessions) * 100 : 0;
+
+    return {
+      student: {
+        id: student.id,
+        name: student.name,
+        studentId: student.studentId,
+        class: student.class,
+      },
+      period: {
+        year,
+        month,
+        monthName: new Date(year, month - 1).toLocaleString('vi-VN', {
+          month: 'long',
+        }),
+      },
+      statistics: {
+        totalSessions,
+        attendedSessions,
+        absentSessions,
+        lateSessions,
+        attendanceRate: Math.round(attendanceRate * 100) / 100,
+      },
+      attendanceHistory: attendances.map((att) => ({
+        id: att.id,
+        status: att.status,
+        note: att.note,
+        createdAt: att.updatedAt,
+        updatedAt: att.updatedAt,
+        schedule: {
+          id: att.schedule.id,
+          date: att.schedule.date,
+          dayOfWeek: att.schedule.dayOfWeek,
+          module: att.schedule.module,
+        },
+        teacher: {
+          id: att.teacher.id,
+          name: att.teacher.name,
+        },
+        class: {
+          id: att.class.id,
+          name: att.class.name,
+        },
+      })),
+    };
+  }
+
+  // Method để student xem điểm danh theo môn học
+  async getStudentAttendanceBySubject(
+    studentId: number,
+    subject?: string,
+  ): Promise<any> {
+    // Kiểm tra student có tồn tại không
+    const student = await this.studentRepository.findOne({
+      where: { id: studentId },
+      relations: ['class'],
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student with ID ${studentId} not found`);
+    }
+
+    // Tạo query builder
+    let queryBuilder = this.attendanceRepository
+      .createQueryBuilder('attendance')
+      .leftJoinAndSelect('attendance.schedule', 'schedule')
+      .leftJoinAndSelect('attendance.teacher', 'teacher')
+      .leftJoinAndSelect('attendance.class', 'class')
+      .where('attendance.student.id = :studentId', { studentId });
+
+    // Thêm filter theo môn học nếu có
+    if (subject) {
+      queryBuilder = queryBuilder.andWhere(
+        'schedule.module.module_name LIKE :subject',
+        { subject: `%${subject}%` },
+      );
+    }
+
+    const attendances = await queryBuilder
+      .orderBy('schedule.date', 'DESC')
+      .getMany();
+
+    // Nhóm theo môn học
+    const attendanceBySubject = attendances.reduce((acc, att) => {
+      const subjectName = att.schedule.module.module_name;
+      if (!acc[subjectName]) {
+        acc[subjectName] = {
+          subject: subjectName,
+          totalSessions: 0,
+          attendedSessions: 0,
+          absentSessions: 0,
+          lateSessions: 0,
+          attendanceRate: 0,
+          sessions: [],
+        };
+      }
+
+      acc[subjectName].totalSessions++;
+      if (att.status === 1) acc[subjectName].attendedSessions++;
+      else if (att.status === 0) acc[subjectName].absentSessions++;
+      else if (att.status === 2) acc[subjectName].lateSessions++;
+
+      acc[subjectName].sessions.push({
+        id: att.id,
+        status: att.status,
+        note: att.note,
+        createdAt: att.updatedAt,
+        updatedAt: att.updatedAt,
+        schedule: {
+          id: att.schedule.id,
+          date: att.schedule.date,
+          dayOfWeek: att.schedule.dayOfWeek,
+        },
+        teacher: {
+          id: att.teacher.id,
+          name: att.teacher.name,
+        },
+      });
+
+      return acc;
+    }, {});
+
+    // Tính attendance rate cho từng môn học
+    Object.values(attendanceBySubject).forEach((subjectData: any) => {
+      subjectData.attendanceRate =
+        subjectData.totalSessions > 0
+          ? Math.round(
+              (subjectData.attendedSessions / subjectData.totalSessions) *
+                10000,
+            ) / 100
+          : 0;
+    });
+
+    return {
+      student: {
+        id: student.id,
+        name: student.name,
+        studentId: student.studentId,
+        class: student.class,
+      },
+      attendanceBySubject: Object.values(attendanceBySubject),
+    };
+  }
 }

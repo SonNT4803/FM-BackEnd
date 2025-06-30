@@ -50,7 +50,7 @@ import { SeedModule } from './seeds/seed.module';
     TypeOrmModule.forRoot({
       type: 'mysql',
       host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT, 10),
+      port: parseInt(process.env.DB_PORT, 10) || 20394 ,
       username: process.env.DB_USER,
       // password: 'lht@39412990',
       password: process.env.DB_PASS,

@@ -7,10 +7,18 @@ import { Class } from 'src/entities/center/class.entity';
 import { Student } from 'src/entities/center/student.entity';
 import { Teacher } from 'src/entities/teacher.entity';
 import { Schedule } from 'src/entities/schedule.entity';
+import { Shift } from 'src/entities/shift.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Attendance, Class, Student, Teacher, Schedule]),
+    TypeOrmModule.forFeature([
+      Attendance,
+      Class,
+      Student,
+      Teacher,
+      Schedule,
+      Shift,
+    ]),
   ],
   providers: [AttendanceService],
   controllers: [AttendanceController],

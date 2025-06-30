@@ -138,3 +138,43 @@ export class StudentAttendanceBySubjectDto {
     }>;
   }>;
 }
+
+// DTO cho student attendance by date
+export class StudentAttendanceByDateDto {
+  student: {
+    id: number;
+    name: string;
+    studentId: string;
+    class: Class;
+  };
+  date: {
+    date: string;
+    dayOfWeek: string;
+    formattedDate: string;
+  };
+  attendanceHistory: Array<{
+    id: number;
+    status: number;
+    note: string | null;
+    schedule: {
+      id: number;
+      date: string;
+      dayOfWeek: string;
+      startTime: string;
+      endTime: string;
+      module: {
+        id: number;
+        module_name: string;
+        module_code: string;
+      };
+    };
+    teacher: {
+      id: number;
+      name: string;
+    };
+    class: {
+      id: number;
+      name: string;
+    };
+  }>;
+}

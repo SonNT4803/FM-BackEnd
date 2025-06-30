@@ -114,4 +114,28 @@ export class AttendanceController {
       data: result,
     };
   }
+
+  // Endpoint cho student xem điểm danh theo ngày cụ thể
+  @Get('student/:studentId/:date')
+  @ApiOperation({ summary: 'Xem điểm danh của sinh viên theo ngày cụ thể' })
+  @ApiParam({ name: 'studentId', description: 'ID của sinh viên' })
+  @ApiParam({
+    name: 'date',
+    description: 'Ngày (YYYY-MM-DD)',
+    example: '2025-7-2',
+  })
+  async getStudentAttendanceByDate(
+    @Param('studentId') studentId: number,
+    @Param('date') date: string,
+  ) {
+    const result = await this.attendanceService.getStudentAttendanceByDate(
+      studentId,
+      date,
+    );
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Lấy điểm danh theo ngày thành công',
+      data: result,
+    };
+  }
 }

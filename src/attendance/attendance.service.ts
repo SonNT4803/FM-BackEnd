@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Attendance } from 'src/entities/attendance.entity';
 import { Class } from 'src/entities/center/class.entity';
 import { Schedule } from 'src/entities/schedule.entity';
+import { Shift } from 'src/entities/shift.entity';
 import { Student } from 'src/entities/center/student.entity';
 import { Teacher } from 'src/entities/teacher.entity';
 import { Repository } from 'typeorm';
@@ -11,6 +12,7 @@ import {
   AttendanceDto,
   CreateAttendanceDto,
   UpdateAttendanceDto,
+  StudentAttendanceByDateDto,
 } from './dto/attendance.dto';
 
 @Injectable()
@@ -26,6 +28,8 @@ export class AttendanceService {
     private readonly teacherRepository: Repository<Teacher>,
     @InjectRepository(Schedule)
     private readonly scheduleRepository: Repository<Schedule>,
+    @InjectRepository(Shift)
+    private readonly shiftRepository: Repository<Shift>,
   ) {}
 
   async create(createAttendanceDto: CreateAttendanceDto): Promise<Attendance> {
@@ -374,7 +378,13 @@ export class AttendanceService {
           id: att.schedule.id,
           date: att.schedule.date,
           dayOfWeek: att.schedule.dayOfWeek,
-          module: att.schedule.module,
+          startTime: att.schedule.shift?.startTime,
+          endTime: att.schedule.shift?.endTime,
+          module: {
+            id: att.schedule.module.module_id,
+            module_name: att.schedule.module.module_name,
+            module_code: att.schedule.module.code,
+          },
         },
         teacher: {
           id: att.teacher.id,
@@ -461,7 +471,13 @@ export class AttendanceService {
           id: att.schedule.id,
           date: att.schedule.date,
           dayOfWeek: att.schedule.dayOfWeek,
-          module: att.schedule.module,
+          startTime: att.schedule.shift?.startTime,
+          endTime: att.schedule.shift?.endTime,
+          module: {
+            id: att.schedule.module.module_id,
+            module_name: att.schedule.module.module_name,
+            module_code: att.schedule.module.code,
+          },
         },
         teacher: {
           id: att.teacher.id,
@@ -540,6 +556,13 @@ export class AttendanceService {
           id: att.schedule.id,
           date: att.schedule.date,
           dayOfWeek: att.schedule.dayOfWeek,
+          startTime: att.schedule.shift?.startTime,
+          endTime: att.schedule.shift?.endTime,
+          module: {
+            id: att.schedule.module.module_id,
+            module_name: att.schedule.module.module_name,
+            module_code: att.schedule.module.code,
+          },
         },
         teacher: {
           id: att.teacher.id,
@@ -569,6 +592,87 @@ export class AttendanceService {
         class: student.class,
       },
       attendanceBySubject: Object.values(attendanceBySubject),
+    };
+  }
+
+  // Method để student xem điểm danh theo ngày cụ thể
+  async getStudentAttendanceByDate(
+    studentId: number,
+    date: string,
+  ): Promise<StudentAttendanceByDateDto> {
+    // Kiểm tra student có tồn tại không
+    const student = await this.studentRepository.findOne({
+      where: { id: studentId },
+      relations: ['class'],
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student with ID ${studentId} not found`);
+    }
+
+    // Parse date string thành Date object
+    const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) {
+      throw new Error('Invalid date format. Please use YYYY-MM-DD format');
+    }
+
+    // Tạo date range cho ngày cụ thể (từ 00:00:00 đến 23:59:59)
+    const startDate = new Date(targetDate);
+    startDate.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(targetDate);
+    endDate.setHours(23, 59, 59, 999);
+
+    // Lấy attendance records trong ngày cụ thể
+    const attendances = await this.attendanceRepository
+      .createQueryBuilder('attendance')
+      .leftJoinAndSelect('attendance.schedule', 'schedule')
+      .leftJoinAndSelect('schedule.shift', 'shift')
+      .leftJoinAndSelect('attendance.teacher', 'teacher')
+      .leftJoinAndSelect('attendance.class', 'class')
+      .leftJoinAndSelect('schedule.module', 'module')
+      .where('attendance.student.id = :studentId', { studentId })
+      .andWhere('schedule.date >= :startDate', { startDate })
+      .andWhere('schedule.date <= :endDate', { endDate })
+      .orderBy('shift.startTime', 'ASC')
+      .getMany();
+    return {
+      student: {
+        id: student.id,
+        name: student.name,
+        studentId: student.studentId,
+        class: student.class,
+      },
+      date: {
+        date: date,
+        dayOfWeek: targetDate.toLocaleDateString('vi-VN', { weekday: 'long' }),
+        formattedDate: targetDate.toLocaleDateString('vi-VN'),
+      },
+      attendanceHistory: attendances.map((att) => ({
+        id: att.id,
+        status: att.status,
+        note: att.note,
+        schedule: {
+          id: att.schedule.id,
+          date: att.schedule.date,
+          dayOfWeek: att.schedule.dayOfWeek,
+          startTime: att.schedule.shift?.startTime,
+          endTime: att.schedule.shift?.endTime,
+          module: {
+            id: att.schedule.module.module_id,
+            module_name: att.schedule.module.module_name,
+            module_code: att.schedule.module.code,
+          },
+        },
+        teacher: {
+          id: att.teacher.id,
+          name: att.teacher.name,
+        },
+        class: {
+          id: att.class.id,
+          name: att.class.name,
+        },
+      })),
     };
   }
 }

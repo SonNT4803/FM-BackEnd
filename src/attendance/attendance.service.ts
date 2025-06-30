@@ -378,8 +378,12 @@ export class AttendanceService {
           id: att.schedule.id,
           date: att.schedule.date,
           dayOfWeek: att.schedule.dayOfWeek,
-          startTime: att.schedule.shift?.startTime,
-          endTime: att.schedule.shift?.endTime,
+          shift: {
+            id: att.schedule.shift?.id,
+            name: att.schedule.shift?.name,
+            startTime: att.schedule.shift?.startTime,
+            endTime: att.schedule.shift?.endTime,
+          },
           module: {
             id: att.schedule.module.module_id,
             module_name: att.schedule.module.module_name,
@@ -471,8 +475,12 @@ export class AttendanceService {
           id: att.schedule.id,
           date: att.schedule.date,
           dayOfWeek: att.schedule.dayOfWeek,
-          startTime: att.schedule.shift?.startTime,
-          endTime: att.schedule.shift?.endTime,
+          shift: {
+            id: att.schedule.shift?.id,
+            name: att.schedule.shift?.name,
+            startTime: att.schedule.shift?.startTime,
+            endTime: att.schedule.shift?.endTime,
+          },
           module: {
             id: att.schedule.module.module_id,
             module_name: att.schedule.module.module_name,
@@ -556,8 +564,12 @@ export class AttendanceService {
           id: att.schedule.id,
           date: att.schedule.date,
           dayOfWeek: att.schedule.dayOfWeek,
-          startTime: att.schedule.shift?.startTime,
-          endTime: att.schedule.shift?.endTime,
+          shift: {
+            id: att.schedule.shift?.id,
+            name: att.schedule.shift?.name,
+            startTime: att.schedule.shift?.startTime,
+            endTime: att.schedule.shift?.endTime,
+          },
           module: {
             id: att.schedule.module.module_id,
             module_name: att.schedule.module.module_name,
@@ -656,8 +668,12 @@ export class AttendanceService {
           id: att.schedule.id,
           date: att.schedule.date,
           dayOfWeek: att.schedule.dayOfWeek,
-          startTime: att.schedule.shift?.startTime,
-          endTime: att.schedule.shift?.endTime,
+          shift: {
+            id: att.schedule.shift?.id,
+            name: att.schedule.shift?.name,
+            startTime: att.schedule.shift?.startTime,
+            endTime: att.schedule.shift?.endTime,
+          },
           module: {
             id: att.schedule.module.module_id,
             module_name: att.schedule.module.module_name,
@@ -674,5 +690,13 @@ export class AttendanceService {
         },
       })),
     };
+  }
+
+  // Method để tìm student theo userId (cho mobile app)
+  async findStudentByUserId(userId: number): Promise<Student | null> {
+    return await this.studentRepository
+      .createQueryBuilder('student')
+      .where('student.userId = :userId', { userId })
+      .getOne();
   }
 }

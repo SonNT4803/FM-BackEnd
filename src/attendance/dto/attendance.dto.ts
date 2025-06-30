@@ -160,8 +160,12 @@ export class StudentAttendanceByDateDto {
       id: number;
       date: string;
       dayOfWeek: string;
-      startTime: string;
-      endTime: string;
+      shift: {
+        id: number;
+        name: string;
+        startTime: string;
+        endTime: string;
+      };
       module: {
         id: number;
         module_name: string;

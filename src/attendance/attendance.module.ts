@@ -8,6 +8,7 @@ import { Student } from 'src/entities/center/student.entity';
 import { Teacher } from 'src/entities/teacher.entity';
 import { Schedule } from 'src/entities/schedule.entity';
 import { Shift } from 'src/entities/shift.entity';
+import { StudentModule } from '../center/student/student.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { Shift } from 'src/entities/shift.entity';
       Schedule,
       Shift,
     ]),
+    StudentModule,
   ],
   providers: [AttendanceService],
   controllers: [AttendanceController],

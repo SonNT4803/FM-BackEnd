@@ -138,4 +138,99 @@ export class AttendanceController {
       data: result,
     };
   }
+
+  // ========== MOBILE ENDPOINTS (sử dụng userId) ==========
+
+  // Endpoint cho mobile - xem lịch sử điểm danh theo userId
+  @Get('user/:userId/history')
+  @ApiOperation({
+    summary: 'Xem lịch sử điểm danh của sinh viên theo userId (Mobile)',
+  })
+  @ApiParam({ name: 'userId', description: 'ID của user (từ access token)' })
+  async getUserAttendanceHistory(@Param('userId') userId: number) {
+    const result =
+      await this.attendanceService.getStudentAttendanceHistory(userId);
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Lấy lịch sử điểm danh thành công',
+      data: result,
+    };
+  }
+
+  // Endpoint cho mobile - xem điểm danh theo tháng và userId
+  @Get('user/:userId/monthly')
+  @ApiOperation({
+    summary: 'Xem điểm danh của sinh viên theo tháng và userId (Mobile)',
+  })
+  @ApiParam({ name: 'userId', description: 'ID của user (từ access token)' })
+  @ApiQuery({ name: 'year', description: 'Năm', example: 2024 })
+  @ApiQuery({ name: 'month', description: 'Tháng (1-12)', example: 12 })
+  async getUserAttendanceByMonth(
+    @Param('userId') userId: number,
+    @Query('year') year: number,
+    @Query('month') month: number,
+  ) {
+    const result = await this.attendanceService.getStudentAttendanceByMonth(
+      userId,
+      year,
+      month,
+    );
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Lấy điểm danh theo tháng thành công',
+      data: result,
+    };
+  }
+
+  // Endpoint cho mobile - xem điểm danh theo môn học và userId
+  @Get('user/:userId/subject')
+  @ApiOperation({
+    summary: 'Xem điểm danh của sinh viên theo môn học và userId (Mobile)',
+  })
+  @ApiParam({ name: 'userId', description: 'ID của user (từ access token)' })
+  @ApiQuery({
+    name: 'subject',
+    description: 'Tên môn học (tùy chọn)',
+    required: false,
+  })
+  async getUserAttendanceBySubject(
+    @Param('userId') userId: number,
+    @Query('subject') subject?: string,
+  ) {
+    const result = await this.attendanceService.getStudentAttendanceBySubject(
+      userId,
+      subject,
+    );
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Lấy điểm danh theo môn học thành công',
+      data: result,
+    };
+  }
+
+  // Endpoint cho mobile - xem điểm danh theo ngày và userId
+  @Get('user/:userId/date/:date')
+  @ApiOperation({
+    summary: 'Xem điểm danh của sinh viên theo ngày và userId (Mobile)',
+  })
+  @ApiParam({ name: 'userId', description: 'ID của user (từ access token)' })
+  @ApiParam({
+    name: 'date',
+    description: 'Ngày (YYYY-MM-DD)',
+    example: '2025-7-2',
+  })
+  async getUserAttendanceByDate(
+    @Param('userId') userId: number,
+    @Param('date') date: string,
+  ) {
+    const result = await this.attendanceService.getStudentAttendanceByDate(
+      userId,
+      date,
+    );
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Lấy điểm danh theo ngày thành công',
+      data: result,
+    };
+  }
 }

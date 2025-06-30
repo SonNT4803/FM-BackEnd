@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleService } from './schedule.service';
 import { ScheduleController } from './schedule.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Attendance } from 'src/entities/attendance.entity';
 import { Schedule } from 'src/entities/schedule.entity';
 import { Class } from 'src/entities/center/class.entity';
 import { Teacher } from 'src/entities/teacher.entity';
@@ -13,6 +14,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { jwtConstants } from 'src/auth/const';
 import { Courses } from 'src/entities/courses.entity';
 import { AttendanceModule } from 'src/attendance/attendance.module';
+import { Student } from 'src/entities/center/student.entity';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { AttendanceModule } from 'src/attendance/attendance.module';
       me,
       Classroom,
       Courses,
+      Student,
+      Attendance,
     ]),
     JwtModule.register({
       secret: jwtConstants, // Thay bằng bí mật của bạn

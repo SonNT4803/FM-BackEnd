@@ -42,6 +42,54 @@ export class CreateScheduleDto {
 }
 export class UpdateScheduleDto extends PartialType(CreateScheduleDto) {}
 
+// Simplified interfaces for cleaner response
+export interface SimplifiedShift {
+  id: number;
+  name: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface SimplifiedClass {
+  id: number;
+  name: string;
+  status: string;
+}
+
+export interface SimplifiedBuilding {
+  id: number;
+  name: string;
+}
+
+export interface SimplifiedClassroom {
+  id: number;
+  name: string;
+  building: SimplifiedBuilding;
+}
+
+export interface SimplifiedTeacher {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export interface SimplifiedModule {
+  module_id: number;
+  module_name: string;
+  code: string;
+}
+
+export interface SimplifiedAttendance {
+  id: number;
+  status: number;
+  note: string | null;
+  updatedAt: Date | null;
+  teacher: {
+    id: number;
+    name: string;
+  };
+}
+
 export class ScheduleDto {
   id: number;
   shift?: Shift;
@@ -52,6 +100,19 @@ export class ScheduleDto {
   dayOfWeek?: string;
   module?: Module;
   attendances?: Attendance[];
+}
+
+// New DTO for student schedule with simplified data
+export class StudentScheduleDto {
+  id: number;
+  shift: SimplifiedShift;
+  class: SimplifiedClass;
+  classroom: SimplifiedClassroom;
+  teacher: SimplifiedTeacher;
+  date: string;
+  dayOfWeek: string;
+  module: SimplifiedModule;
+  attendances: SimplifiedAttendance[];
 }
 
 export class ScheduleCountByDayDto {

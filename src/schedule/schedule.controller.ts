@@ -26,6 +26,7 @@ import {
   CreateScheduleDto,
   ScheduleCountByDayDto,
   ScheduleDto,
+  StudentScheduleDto,
   UpdateScheduleDto,
 } from './dto/schedule.dto';
 import { ScheduleService } from './schedule.service';
@@ -140,7 +141,7 @@ export class ScheduleController {
   async getByStudentId(
     @Param('date') date: string,
     @Param('userId') userId: number,
-  ): Promise<ScheduleDto[]> {
+  ): Promise<StudentScheduleDto[]> {
     const student = await this.attendanceService.findStudentByUserId(userId);
     return this.scheduleService.getByStudentId(student.id, date);
   }

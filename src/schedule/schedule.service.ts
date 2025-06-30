@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as moment from 'moment';
+import { Attendance } from 'src/entities/attendance.entity';
 import { Class } from 'src/entities/center/class.entity';
 import { Classroom } from 'src/entities/center/classroom.entity';
 import { Module } from 'src/entities/module.entity';
@@ -19,6 +20,7 @@ import {
   CreateScheduleWithDaysDto,
   ScheduleCountByDayDto,
   ScheduleDto,
+  StudentScheduleDto,
   UpdateScheduleDto,
 } from './dto/schedule.dto';
 
@@ -324,29 +326,97 @@ export class ScheduleService {
     return scheduleDtos;
   }
 
-  async getByStudentId(userId: number, date: string): Promise<ScheduleDto[]> {
+  async getByStudentId(
+    userId: number,
+    date: string,
+  ): Promise<StudentScheduleDto[]> {
     const formatDate = moment(date).format('YYYY-MM-DD').toString();
-    const schedules = await this.scheduleRepository.find({
-      where: { date: formatDate, class: { students: { id: userId } } },
-      relations: ['shift', 'class', 'classroom', 'teacher', 'module'],
-    });
 
-    const scheduleDtos: ScheduleDto[] = schedules.map((schedule) => {
-      const scheduleDto = new ScheduleDto();
+    // Sử dụng QueryBuilder để join với attendance và filter theo studentId
+    const schedules = await this.scheduleRepository
+      .createQueryBuilder('schedule')
+      .leftJoinAndSelect('schedule.shift', 'shift')
+      .leftJoinAndSelect('schedule.class', 'class')
+      .leftJoinAndSelect('schedule.classroom', 'classroom')
+      .leftJoinAndSelect('classroom.building', 'building')
+      .leftJoinAndSelect('schedule.teacher', 'teacher')
+      .leftJoinAndSelect('schedule.module', 'module')
+      .leftJoinAndSelect('schedule.attendances', 'attendances')
+      .leftJoinAndSelect('attendances.student', 'attendanceStudent')
+      .leftJoinAndSelect('attendances.teacher', 'attendanceTeacher')
+      .where('schedule.date = :date', { date: formatDate })
+      .andWhere(
+        'EXISTS (SELECT 1 FROM students WHERE students.id = :userId AND students.classId = class.id)',
+        { userId },
+      )
+      .getMany();
+
+    const scheduleDtos: StudentScheduleDto[] = schedules.map((schedule) => {
+      const scheduleDto = new StudentScheduleDto();
       scheduleDto.id = schedule.id;
-      scheduleDto.shift = schedule.shift;
-      scheduleDto.class = schedule.class;
-      scheduleDto.classroom = schedule.classroom;
-      scheduleDto.teacher = schedule.teacher;
+
+      // Chỉ lấy thông tin cần thiết của shift
+      scheduleDto.shift = {
+        id: schedule.shift.id,
+        name: schedule.shift.name,
+        startTime: schedule.shift.startTime,
+        endTime: schedule.shift.endTime,
+      };
+
+      // Chỉ lấy thông tin cần thiết của class
+      scheduleDto.class = {
+        id: schedule.class.id,
+        name: schedule.class.name,
+        status: schedule.class.status,
+      };
+
+      // Chỉ lấy thông tin cần thiết của classroom
+      scheduleDto.classroom = {
+        id: schedule.classroom.id,
+        name: schedule.classroom.name,
+        building: {
+          id: schedule.classroom.building.id,
+          name: schedule.classroom.building.name,
+        },
+      };
+
+      // Chỉ lấy thông tin cần thiết của teacher
+      scheduleDto.teacher = {
+        id: schedule.teacher.id,
+        name: schedule.teacher.name,
+        email: schedule.teacher.email,
+      };
+
       scheduleDto.date = moment(schedule.date).format('DD-MM-YYYY');
-      scheduleDto.module = schedule.module;
-      scheduleDto.attendances = schedule.attendances;
+
+      // Chỉ lấy thông tin cần thiết của module
+      scheduleDto.module = {
+        module_id: schedule.module.module_id,
+        module_name: schedule.module.module_name,
+        code: schedule.module.code,
+      };
+
+      // Lọc attendance chỉ cho sinh viên cụ thể và chỉ lấy thông tin cần thiết
+      if (schedule.attendances) {
+        scheduleDto.attendances = schedule.attendances
+          .filter((attendance) => attendance.student?.id === userId)
+          .map((attendance) => ({
+            id: attendance.id,
+            status: attendance.status,
+            note: attendance.note,
+            updatedAt: attendance.updatedAt,
+            teacher: {
+              id: attendance.teacher?.id,
+              name: attendance.teacher?.name,
+            },
+          }));
+      }
+
       scheduleDto.dayOfWeek = schedule.dayOfWeek;
       return scheduleDto;
     });
     return scheduleDtos;
   }
-
   async findByClassId(classId: number): Promise<Schedule[]> {
     return this.scheduleRepository.find({
       where: { class: { id: classId } },

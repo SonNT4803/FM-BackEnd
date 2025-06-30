@@ -223,8 +223,16 @@ export class AttendanceController {
     @Param('userId') userId: number,
     @Param('date') date: string,
   ) {
+    const student = await this.attendanceService.findStudentByUserId(userId);
+    if (!student) {
+      return {
+        statusCode: 404,
+        message: 'Không tìm thấy sinh viên cho user này',
+        data: null,
+      };
+    }
     const result = await this.attendanceService.getStudentAttendanceByDate(
-      userId,
+      student.id,
       date,
     );
     return {

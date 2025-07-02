@@ -95,6 +95,16 @@ export class FaceApiController {
     };
   }
 
+  @Get('performance-report')
+  async getPerformanceReport() {
+    const report = await this.faceApiService.getPerformanceReport();
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Performance report',
+      data: report,
+    };
+  }
+
   @Get('test-performance/:studentId')
   async testPerformance(@Param('studentId') studentId: number) {
     const result = await this.faceApiService.testPerformance(studentId);

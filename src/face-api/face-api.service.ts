@@ -1,14 +1,15 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Student } from '../entities/center/student.entity';
-import { Class } from '../entities/center/class.entity';
-import { AttendanceService } from '../attendance/attendance.service';
-import * as faceapi from 'face-api.js';
 import { Canvas, Image, ImageData } from 'canvas';
-import * as path from 'path';
+import * as faceapi from 'face-api.js';
 import * as fs from 'fs';
-import * as sharp from 'sharp';
+import * as path from 'path';
+import { Repository } from 'typeorm';
+import { AttendanceService } from '../attendance/attendance.service';
+import { Class } from '../entities/center/class.entity';
+import { Student } from '../entities/center/student.entity';
+import * as https from 'https';
+import * as http from 'http';
 // Configure face-api.js to use canvas
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData } as any);
 
@@ -50,55 +51,78 @@ export class FaceApiService {
       }
     }
   }
+  private async downloadImageFromUrl(url: string): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const client = url.startsWith('https') ? https : http;
+      client
+        .get(url, (res) => {
+          if (res.statusCode !== 200) {
+            reject(
+              new Error(`Failed to get image. Status code: ${res.statusCode}`),
+            );
+            return;
+          }
+          const data: Uint8Array[] = [];
+          res.on('data', (chunk) => data.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(data)));
+        })
+        .on('error', reject);
+    });
+  }
 
-  private async loadImage(imageOrPath: string): Promise<Image> {
+  private async loadImage(imageSource: string): Promise<Image> {
     try {
-      // Nếu là base64 data url
-      if (imageOrPath.startsWith('data:image/')) {
-        const base64Data = imageOrPath.replace(/^data:image\/\w+;base64,/, '');
-        let buffer = Buffer.from(base64Data, 'base64');
-        // Resize và auto-orient bằng sharp
-        buffer = await sharp(buffer)
-          .rotate() // auto-orient theo EXIF
-          .resize({ width: 800, height: 800, fit: 'inside' }) // resize max 800px
-          .toBuffer();
-        // Lưu file debug
-        fs.writeFileSync('debug_input.jpg', buffer);
-        console.log(
-          'Debug: Saved input image to debug_input.jpg, size:',
-          buffer.length,
-        );
-        return await new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = (err) =>
-            reject(new Error('Failed to load image: ' + err));
-          img.src = buffer;
-        });
+      let imageBuffer: Buffer;
+
+      // Nếu là base64
+      if (imageSource.startsWith('data:image/')) {
+        const base64Data = imageSource.replace(/^data:image\/\w+;base64,/, '');
+        imageBuffer = Buffer.from(base64Data, 'base64');
+      }
+      // Nếu là URL
+      else if (
+        imageSource.startsWith('http://') ||
+        imageSource.startsWith('https://')
+      ) {
+        imageBuffer = await this.downloadImageFromUrl(imageSource);
+      }
+      // Nếu là đường dẫn file vật lý, tự động chuyển thành URL public nếu có domain
+      else if (imageSource.startsWith('/uploads/')) {
+        const PUBLIC_DOMAIN = 'https://fm-backend-izjp.onrender.com';
+        const url = PUBLIC_DOMAIN + imageSource;
+        imageBuffer = await this.downloadImageFromUrl(url);
+      }
+      // Nếu là file path local (trường hợp đặc biệt)
+      else {
+        let filePath = imageSource;
+        if (filePath.startsWith('/')) {
+          filePath = filePath.substring(1);
+        }
+        if (!path.isAbsolute(filePath)) {
+          filePath = path.join(process.cwd(), filePath);
+        }
+
+        if (!fs.existsSync(filePath)) {
+          throw new Error(`File not found: ${filePath}`);
+        }
+
+        imageBuffer = fs.readFileSync(filePath);
       }
 
-      // Nếu là đường dẫn file
-      let filePath = imageOrPath;
-      if (filePath.startsWith('/')) {
-        filePath = filePath.substring(1); // Bỏ dấu / đầu
-      }
-      filePath = path.join(process.cwd(), filePath);
-      if (!fs.existsSync(filePath)) {
-        throw new Error('File not found: ' + filePath);
-      }
-      const buffer = fs.readFileSync(filePath);
-      return await new Promise((resolve, reject) => {
+      // Chuyển đổi Buffer thành Image object
+      return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(img);
         img.onerror = (err) =>
-          reject(new Error('Failed to load image: ' + err));
-        img.src = buffer;
+          reject(new Error(`Failed to load image: ${err}`));
+        img.src = imageBuffer;
       });
     } catch (error) {
-      console.error('Error in loadImage:', error);
-      throw new BadRequestException('Không thể đọc ảnh: ' + error.message);
+      console.error('Error loading image:', error);
+      throw new BadRequestException(`Không thể đọc ảnh: ${error.message}`);
     }
   }
+
   // Method để test format ảnh avatar
   async testAvatarFormat(studentId: number): Promise<any> {
     try {

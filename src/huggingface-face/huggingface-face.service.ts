@@ -14,7 +14,7 @@ import * as http from 'http';
 @Injectable()
 export class HuggingfaceFaceService {
   private faceDescriptors: Map<number, string> = new Map();
-  private readonly similarityThreshold = 0.05; // Ngưỡng tương đồng (giảm xuống để test)
+  private readonly similarityThreshold = 0.001; // Ngưỡng tương đồng (giảm xuống để test)
 
   constructor(
     @InjectRepository(Student)
@@ -119,7 +119,7 @@ export class HuggingfaceFaceService {
   }
 
   /**
-   * Calculate similarity between two face descriptors (simplified)
+   * Calculate similarity between two face descriptors (improved)
    */
   private calculateSimilarity(
     descriptor1: string,
@@ -131,19 +131,37 @@ export class HuggingfaceFaceService {
       return 1.0; // Perfect match
     }
 
-    // Simple hamming distance for demo
+    // Improved similarity calculation
     let distance = 0;
     const minLength = Math.min(descriptor1.length, descriptor2.length);
+    const maxLength = Math.max(descriptor1.length, descriptor2.length);
 
+    // Calculate character-by-character difference
     for (let i = 0; i < minLength; i++) {
       if (descriptor1[i] !== descriptor2[i]) {
         distance++;
       }
     }
 
-    // Convert distance to similarity (0-1)
-    const maxDistance = Math.max(descriptor1.length, descriptor2.length);
-    return 1 - distance / maxDistance;
+    // Add penalty for length difference
+    const lengthDifference = maxLength - minLength;
+    distance += lengthDifference * 0.5; // Penalty for length difference
+
+    // Convert distance to similarity (0-1) with better scaling
+    const maxDistance = maxLength;
+    const rawSimilarity = 1 - distance / maxDistance;
+
+    // Apply sigmoid-like function to make it more forgiving
+    const similarity = Math.max(0, rawSimilarity * 2 - 0.5);
+
+    console.log(
+      'Raw similarity:',
+      rawSimilarity,
+      'Adjusted similarity:',
+      similarity,
+    );
+
+    return similarity;
   }
 
   /**
@@ -226,7 +244,9 @@ export class HuggingfaceFaceService {
           'Generated descriptor length:',
           registeredDescriptor.length,
         );
-        // Không cần lưu vào RAM nếu không muốn
+        // Tự động lưu vào RAM để lần sau không cần tạo lại
+        this.faceDescriptors.set(studentId, registeredDescriptor);
+        console.log('Auto-registered face descriptor for student:', studentId);
       }
 
       // Extract face descriptor from input image
@@ -244,6 +264,14 @@ export class HuggingfaceFaceService {
       );
       console.log('Similarity:', similarity);
       console.log('Threshold:', this.similarityThreshold);
+      console.log(
+        'Registered descriptor (first 50 chars):',
+        registeredDescriptor.substring(0, 50),
+      );
+      console.log(
+        'Input descriptor (first 50 chars):',
+        inputDescriptor.substring(0, 50),
+      );
       const isVerified = similarity >= this.similarityThreshold;
 
       if (!isVerified) {

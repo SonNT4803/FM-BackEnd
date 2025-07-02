@@ -69,6 +69,20 @@ export class FaceApiService {
     if (!fs.existsSync(this.modelPath)) {
       fs.mkdirSync(this.modelPath, { recursive: true });
     }
+
+    // Preload models when service starts to avoid delay on first request
+    this.preloadModels();
+  }
+
+  // Preload models in background
+  private async preloadModels(): Promise<void> {
+    try {
+      console.log('Preloading face detection models...');
+      await this.loadModels();
+      console.log('Models preloaded successfully');
+    } catch (error) {
+      console.error('Failed to preload models:', error);
+    }
   }
 
   // Clean up expired cache entries
@@ -155,27 +169,55 @@ export class FaceApiService {
   private async loadImage(imageSource: string): Promise<Image> {
     try {
       let imageBuffer: Buffer;
+      let sourceType = '';
 
       // Nếu là base64
       if (imageSource.startsWith('data:image/')) {
+        sourceType = 'base64';
         const base64Data = imageSource.replace(/^data:image\/\w+;base64,/, '');
         imageBuffer = Buffer.from(base64Data, 'base64');
+      }
+      // Nếu là file path local - ưu tiên đọc file trực tiếp
+      else if (
+        imageSource.startsWith('/uploads/') ||
+        imageSource.startsWith('uploads/')
+      ) {
+        let filePath = imageSource;
+        if (filePath.startsWith('/')) {
+          filePath = filePath.substring(1);
+        }
+        if (!path.isAbsolute(filePath)) {
+          filePath = path.join(process.cwd(), filePath);
+        }
+
+        console.log(`🔍 Kiểm tra file local: ${filePath}`);
+
+        if (fs.existsSync(filePath)) {
+          sourceType = 'local';
+          console.log(`✅ Đọc file local: ${filePath}`);
+          imageBuffer = fs.readFileSync(filePath);
+        } else {
+          sourceType = 'url-fallback';
+          console.log(
+            `❌ File local không tồn tại, download từ URL: ${imageSource}`,
+          );
+          // Fallback: download từ URL nếu file không tồn tại
+          const PUBLIC_DOMAIN = 'https://fm-backend-izjp.onrender.com';
+          const url = PUBLIC_DOMAIN + imageSource;
+          imageBuffer = await this.downloadImageFromUrl(url);
+        }
       }
       // Nếu là URL
       else if (
         imageSource.startsWith('http://') ||
         imageSource.startsWith('https://')
       ) {
+        sourceType = 'url';
         imageBuffer = await this.downloadImageFromUrl(imageSource);
-      }
-      // Nếu là đường dẫn file vật lý, tự động chuyển thành URL public nếu có domain
-      else if (imageSource.startsWith('/uploads/')) {
-        const PUBLIC_DOMAIN = 'https://fm-backend-izjp.onrender.com';
-        const url = PUBLIC_DOMAIN + imageSource;
-        imageBuffer = await this.downloadImageFromUrl(url);
       }
       // Nếu là file path local (trường hợp đặc biệt)
       else {
+        sourceType = 'local-path';
         let filePath = imageSource;
         if (filePath.startsWith('/')) {
           filePath = filePath.substring(1);
@@ -191,12 +233,23 @@ export class FaceApiService {
         imageBuffer = fs.readFileSync(filePath);
       }
 
+      console.log(
+        `📊 Image source: ${sourceType}, size: ${(imageBuffer.length / 1024).toFixed(2)}KB`,
+      );
+
       // Chuyển đổi Buffer thành Image object
       return new Promise((resolve, reject) => {
         const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = (err) =>
+        img.onload = () => {
+          console.log(
+            `✅ Image loaded successfully: ${img.width}x${img.height}`,
+          );
+          resolve(img);
+        };
+        img.onerror = (err) => {
+          console.error(`❌ Failed to load image: ${err}`);
           reject(new Error(`Failed to load image: ${err}`));
+        };
         img.src = imageBuffer;
       });
     } catch (error) {
@@ -580,5 +633,317 @@ export class FaceApiService {
       timestamp: new Date().toISOString(),
       memoryUsage: process.memoryUsage(),
     };
+  }
+
+  // Test performance comparison between local file vs URL
+  async testPerformance(studentId: number): Promise<any> {
+    try {
+      const student = await this.studentRepository.findOne({
+        where: { id: studentId },
+      });
+
+      if (!student || !student.avatar) {
+        throw new BadRequestException(
+          'Không tìm thấy sinh viên hoặc ảnh đại diện',
+        );
+      }
+
+      await this.loadModels();
+
+      const results = {
+        avatarPath: student.avatar,
+        localFileTest: null,
+        urlTest: null,
+        recommendation: '',
+      };
+
+      // Test local file reading
+      if (
+        student.avatar.startsWith('/uploads/') ||
+        student.avatar.startsWith('uploads/')
+      ) {
+        const localStart = Date.now();
+        try {
+          let filePath = student.avatar;
+          if (filePath.startsWith('/')) {
+            filePath = filePath.substring(1);
+          }
+          if (!path.isAbsolute(filePath)) {
+            filePath = path.join(process.cwd(), filePath);
+          }
+
+          if (fs.existsSync(filePath)) {
+            const imageBuffer = fs.readFileSync(filePath);
+            const image = new Image();
+            image.src = imageBuffer;
+
+            const detection = await faceapi
+              .detectSingleFace(image as any)
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+
+            const localEnd = Date.now();
+            results.localFileTest = {
+              success: !!detection,
+              timeMs: localEnd - localStart,
+              fileSize: imageBuffer.length,
+              exists: true,
+            };
+          } else {
+            results.localFileTest = {
+              success: false,
+              timeMs: 0,
+              fileSize: 0,
+              exists: false,
+              error: 'File not found locally',
+            };
+          }
+        } catch (error) {
+          results.localFileTest = {
+            success: false,
+            timeMs: 0,
+            fileSize: 0,
+            exists: false,
+            error: error.message,
+          };
+        }
+      }
+
+      // Test URL download
+      const urlStart = Date.now();
+      try {
+        const PUBLIC_DOMAIN = 'https://fm-backend-izjp.onrender.com';
+        const url = PUBLIC_DOMAIN + student.avatar;
+        const imageBuffer = await this.downloadImageFromUrl(url);
+        const image = new Image();
+        image.src = imageBuffer;
+
+        const detection = await faceapi
+          .detectSingleFace(image as any)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        const urlEnd = Date.now();
+        results.urlTest = {
+          success: !!detection,
+          timeMs: urlEnd - urlStart,
+          fileSize: imageBuffer.length,
+          url: url,
+        };
+      } catch (error) {
+        results.urlTest = {
+          success: false,
+          timeMs: 0,
+          fileSize: 0,
+          error: error.message,
+        };
+      }
+
+      // Generate recommendation
+      if (results.localFileTest?.exists && results.localFileTest.success) {
+        if (results.localFileTest.timeMs < results.urlTest?.timeMs) {
+          results.recommendation =
+            'Sử dụng file local - nhanh hơn URL download';
+        } else {
+          results.recommendation = 'URL download nhanh hơn file local';
+        }
+      } else if (results.urlTest?.success) {
+        results.recommendation = 'Chỉ có thể sử dụng URL download';
+      } else {
+        results.recommendation = 'Cả hai phương pháp đều thất bại';
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Error in testPerformance:', error);
+      throw new BadRequestException(`Lỗi test performance: ${error.message}`);
+    }
+  }
+
+  // Kiểm tra files missing trong database
+  async checkMissingFiles(): Promise<any> {
+    try {
+      const students = await this.studentRepository
+        .createQueryBuilder('student')
+        .select(['student.id', 'student.avatar'])
+        .where('student.avatar IS NOT NULL')
+        .getMany();
+
+      const results = {
+        totalStudents: students.length,
+        missingFiles: [],
+        existingFiles: [],
+        summary: {},
+      };
+
+      for (const student of students) {
+        if (!student.avatar) continue;
+
+        let filePath = student.avatar;
+        if (filePath.startsWith('/')) {
+          filePath = filePath.substring(1);
+        }
+        if (!path.isAbsolute(filePath)) {
+          filePath = path.join(process.cwd(), filePath);
+        }
+
+        if (fs.existsSync(filePath)) {
+          results.existingFiles.push({
+            studentId: student.id,
+            avatar: student.avatar,
+            fileSize: fs.statSync(filePath).size,
+          });
+        } else {
+          results.missingFiles.push({
+            studentId: student.id,
+            avatar: student.avatar,
+            localPath: filePath,
+          });
+        }
+      }
+
+      results.summary = {
+        missingCount: results.missingFiles.length,
+        existingCount: results.existingFiles.length,
+        missingPercentage:
+          ((results.missingFiles.length / students.length) * 100).toFixed(2) +
+          '%',
+      };
+
+      return results;
+    } catch (error) {
+      console.error('Error in checkMissingFiles:', error);
+      throw new BadRequestException(`Lỗi kiểm tra files: ${error.message}`);
+    }
+  }
+
+  // Sync file từ server về local
+  async syncFileFromServer(studentId: number): Promise<any> {
+    try {
+      const student = await this.studentRepository.findOne({
+        where: { id: studentId },
+      });
+
+      if (!student || !student.avatar) {
+        throw new BadRequestException(
+          'Không tìm thấy sinh viên hoặc ảnh đại diện',
+        );
+      }
+
+      let filePath = student.avatar;
+      if (filePath.startsWith('/')) {
+        filePath = filePath.substring(1);
+      }
+      if (!path.isAbsolute(filePath)) {
+        filePath = path.join(process.cwd(), filePath);
+      }
+
+      // Kiểm tra file đã tồn tại chưa
+      if (fs.existsSync(filePath)) {
+        return {
+          success: true,
+          message: 'File đã tồn tại local',
+          studentId,
+          avatar: student.avatar,
+          localPath: filePath,
+          fileSize: fs.statSync(filePath).size,
+        };
+      }
+
+      // Tạo thư mục nếu chưa có
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      // Download file từ server
+      const PUBLIC_DOMAIN = 'https://fm-backend-izjp.onrender.com';
+      const url = PUBLIC_DOMAIN + student.avatar;
+
+      console.log(`📥 Downloading file: ${url}`);
+      const imageBuffer = await this.downloadImageFromUrl(url);
+
+      // Lưu file local
+      fs.writeFileSync(filePath, imageBuffer);
+
+      console.log(`✅ File synced: ${filePath}`);
+
+      return {
+        success: true,
+        message: 'Sync file thành công',
+        studentId,
+        avatar: student.avatar,
+        localPath: filePath,
+        fileSize: imageBuffer.length,
+        url,
+      };
+    } catch (error) {
+      console.error('Error in syncFileFromServer:', error);
+      throw new BadRequestException(`Lỗi sync file: ${error.message}`);
+    }
+  }
+
+  // Sync tất cả files missing
+  async syncAllMissingFiles(): Promise<any> {
+    try {
+      console.log('🔄 Bắt đầu sync tất cả files missing...');
+
+      const missingFiles = await this.checkMissingFiles();
+
+      if (missingFiles.missingFiles.length === 0) {
+        return {
+          success: true,
+          message: 'Không có files missing',
+          syncedCount: 0,
+          totalMissing: 0,
+        };
+      }
+
+      const results = {
+        success: true,
+        message: `Sync ${missingFiles.missingFiles.length} files`,
+        syncedCount: 0,
+        failedCount: 0,
+        totalMissing: missingFiles.missingFiles.length,
+        details: [],
+      };
+
+      for (const missingFile of missingFiles.missingFiles) {
+        try {
+          console.log(
+            `📥 Syncing file for student ${missingFile.studentId}...`,
+          );
+          const syncResult = await this.syncFileFromServer(
+            missingFile.studentId,
+          );
+          results.details.push({
+            studentId: missingFile.studentId,
+            success: true,
+            ...syncResult,
+          });
+          results.syncedCount++;
+        } catch (error) {
+          console.error(
+            `❌ Failed to sync file for student ${missingFile.studentId}:`,
+            error,
+          );
+          results.details.push({
+            studentId: missingFile.studentId,
+            success: false,
+            error: error.message,
+          });
+          results.failedCount++;
+        }
+      }
+
+      console.log(
+        `✅ Sync completed: ${results.syncedCount} success, ${results.failedCount} failed`,
+      );
+
+      return results;
+    } catch (error) {
+      console.error('Error in syncAllMissingFiles:', error);
+      throw new BadRequestException(`Lỗi sync tất cả files: ${error.message}`);
+    }
   }
 }

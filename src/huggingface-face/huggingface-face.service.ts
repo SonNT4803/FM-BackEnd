@@ -14,7 +14,7 @@ import * as http from 'http';
 @Injectable()
 export class HuggingfaceFaceService {
   private faceDescriptors: Map<number, string> = new Map();
-  private readonly similarityThreshold = 0.1; // Ngưỡng tương đồng (giảm xuống để test)
+  private readonly similarityThreshold = 0.05; // Ngưỡng tương đồng (giảm xuống để test)
 
   constructor(
     @InjectRepository(Student)
@@ -169,6 +169,8 @@ export class HuggingfaceFaceService {
 
       // Store face descriptor
       this.faceDescriptors.set(studentId, descriptor);
+      console.log('Face descriptor stored for student:', studentId);
+      console.log('Total registered faces:', this.faceDescriptors.size);
 
       return {
         statusCode: HttpStatus.OK,
@@ -212,25 +214,36 @@ export class HuggingfaceFaceService {
 
       // Nếu chưa có descriptor, tự động tạo từ avatar
       let registeredDescriptor = this.faceDescriptors.get(studentId);
+      console.log('Registered descriptor exists:', !!registeredDescriptor);
       if (!registeredDescriptor) {
         if (!student.avatar) {
           throw new BadRequestException('Sinh viên chưa có avatar để xác thực');
         }
+        console.log('Generating descriptor from avatar...');
         const avatarBuffer = await this.loadImage(student.avatar);
         registeredDescriptor = await this.generateFaceDescriptor(avatarBuffer);
+        console.log(
+          'Generated descriptor length:',
+          registeredDescriptor.length,
+        );
         // Không cần lưu vào RAM nếu không muốn
       }
 
       // Extract face descriptor from input image
+      console.log('Loading input image...');
       const inputImageBuffer = await this.loadImage(image);
+      console.log('Input image buffer length:', inputImageBuffer.length);
       const inputDescriptor =
         await this.generateFaceDescriptor(inputImageBuffer);
+      console.log('Input descriptor length:', inputDescriptor.length);
 
       // Calculate similarity
       const similarity = this.calculateSimilarity(
         registeredDescriptor,
         inputDescriptor,
       );
+      console.log('Similarity:', similarity);
+      console.log('Threshold:', this.similarityThreshold);
       const isVerified = similarity >= this.similarityThreshold;
 
       if (!isVerified) {

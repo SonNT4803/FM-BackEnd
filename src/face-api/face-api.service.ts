@@ -11,6 +11,20 @@ import { Student } from '../entities/center/student.entity';
 import * as https from 'https';
 import * as http from 'http';
 import { Schedule } from 'src/entities/schedule.entity';
+
+// Try to use GPU acceleration if available
+try {
+  const tf = require('@tensorflow/tfjs-node-gpu');
+  console.log('🚀 GPU acceleration enabled');
+} catch (error) {
+  try {
+    const tf = require('@tensorflow/tfjs-node');
+    console.log('⚡ CPU acceleration enabled');
+  } catch (error) {
+    console.log('⚠️ Using default TensorFlow.js (slower)');
+  }
+}
+
 // Configure face-api.js to use canvas
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData } as any);
 
@@ -114,8 +128,10 @@ export class FaceApiService {
       const startTime = Date.now();
 
       const image = await this.loadImage(imageSource);
+
+      // Use TinyFaceDetector for faster processing
       const detection = await faceapi
-        .detectSingleFace(image as any)
+        .detectSingleFace(image as any, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
         .withFaceDescriptor();
 
@@ -145,8 +161,11 @@ export class FaceApiService {
         // Load models in parallel for better performance
         const startTime = Date.now();
 
+        // Use TinyFaceDetector for faster processing on server
+        // Use TinyFaceDetector for faster processing on server
         await Promise.all([
-          faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath),
+          faceapi.nets.tinyFaceDetector.loadFromDisk(modelPath),
+          faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath), // <-- thêm dòng này
           faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
           faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath),
         ]);
@@ -899,6 +918,109 @@ export class FaceApiService {
     } catch (error) {
       console.error('Error in testPerformance:', error);
       throw new BadRequestException(`Lỗi test performance: ${error.message}`);
+    }
+  }
+
+  // Test optimized performance with TinyFaceDetector
+  async testOptimizedPerformance(studentId: number): Promise<any> {
+    try {
+      const student = await this.studentRepository.findOne({
+        where: { id: studentId },
+      });
+
+      if (!student || !student.avatar) {
+        throw new BadRequestException(
+          'Không tìm thấy sinh viên hoặc ảnh đại diện',
+        );
+      }
+
+      await this.loadModels();
+
+      const results = {
+        avatarPath: student.avatar,
+        tinyFaceDetectorTest: null,
+        ssdMobileNetTest: null,
+        recommendation: '',
+      };
+
+      // Test TinyFaceDetector (optimized)
+      const tinyStart = Date.now();
+      try {
+        const image = await this.loadImage(student.avatar);
+        const detection = await faceapi
+          .detectSingleFace(image as any, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        const tinyEnd = Date.now();
+        results.tinyFaceDetectorTest = {
+          success: !!detection,
+          timeMs: tinyEnd - tinyStart,
+          confidence: detection?.detection?.score || 0,
+          model: 'TinyFaceDetector',
+        };
+      } catch (error) {
+        results.tinyFaceDetectorTest = {
+          success: false,
+          timeMs: 0,
+          error: error.message,
+          model: 'TinyFaceDetector',
+        };
+      }
+
+      // Test SSD MobileNet (original)
+      const ssdStart = Date.now();
+      try {
+        const image = await this.loadImage(student.avatar);
+        const detection = await faceapi
+          .detectSingleFace(image as any)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        const ssdEnd = Date.now();
+        results.ssdMobileNetTest = {
+          success: !!detection,
+          timeMs: ssdEnd - ssdStart,
+          confidence: detection?.detection?.score || 0,
+          model: 'SSD MobileNet',
+        };
+      } catch (error) {
+        results.ssdMobileNetTest = {
+          success: false,
+          timeMs: 0,
+          error: error.message,
+          model: 'SSD MobileNet',
+        };
+      }
+
+      // Generate recommendation
+      if (
+        results.tinyFaceDetectorTest?.success &&
+        results.ssdMobileNetTest?.success
+      ) {
+        const tinyTime = results.tinyFaceDetectorTest.timeMs;
+        const ssdTime = results.ssdMobileNetTest.timeMs;
+        const speedup = (((ssdTime - tinyTime) / ssdTime) * 100).toFixed(1);
+
+        if (tinyTime < ssdTime) {
+          results.recommendation = `TinyFaceDetector nhanh hơn ${speedup}% so với SSD MobileNet`;
+        } else {
+          results.recommendation = `SSD MobileNet nhanh hơn ${(((tinyTime - ssdTime) / tinyTime) * 100).toFixed(1)}% so với TinyFaceDetector`;
+        }
+      } else if (results.tinyFaceDetectorTest?.success) {
+        results.recommendation = 'Chỉ TinyFaceDetector hoạt động';
+      } else if (results.ssdMobileNetTest?.success) {
+        results.recommendation = 'Chỉ SSD MobileNet hoạt động';
+      } else {
+        results.recommendation = 'Cả hai model đều thất bại';
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Error in testOptimizedPerformance:', error);
+      throw new BadRequestException(
+        `Lỗi test optimized performance: ${error.message}`,
+      );
     }
   }
 

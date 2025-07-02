@@ -4,16 +4,12 @@ import * as https from 'https';
 
 const models = [
   {
-    name: 'ssd_mobilenetv1_model-weights_manifest.json',
-    url: 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/ssd_mobilenetv1_model-weights_manifest.json',
+    name: 'tiny_face_detector_model-weights_manifest.json',
+    url: 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/tiny_face_detector_model-weights_manifest.json',
   },
   {
-    name: 'ssd_mobilenetv1_model-shard1',
-    url: 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/ssd_mobilenetv1_model-shard1',
-  },
-  {
-    name: 'ssd_mobilenetv1_model-shard2',
-    url: 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/ssd_mobilenetv1_model-shard2',
+    name: 'tiny_face_detector_model-shard1',
+    url: 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/tiny_face_detector_model-shard1',
   },
   {
     name: 'face_landmark_68_model-weights_manifest.json',

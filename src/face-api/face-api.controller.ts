@@ -115,6 +115,17 @@ export class FaceApiController {
     };
   }
 
+  @Get('test-optimized-performance/:studentId')
+  async testOptimizedPerformance(@Param('studentId') studentId: number) {
+    const result =
+      await this.faceApiService.testOptimizedPerformance(studentId);
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Test optimized performance thành công',
+      data: result,
+    };
+  }
+
   @Get('check-missing-files')
   async checkMissingFiles() {
     const result = await this.faceApiService.checkMissingFiles();

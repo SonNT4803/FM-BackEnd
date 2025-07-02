@@ -10,25 +10,107 @@ import { Class } from '../entities/center/class.entity';
 import { Student } from '../entities/center/student.entity';
 import * as https from 'https';
 import * as http from 'http';
+import { Schedule } from 'src/entities/schedule.entity';
 // Configure face-api.js to use canvas
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData } as any);
+
+// Simple semaphore implementation for limiting concurrent requests
+class Semaphore {
+  private permits: number;
+  private waitQueue: Array<() => void> = [];
+
+  constructor(permits: number) {
+    this.permits = permits;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.permits > 0) {
+      this.permits--;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      this.waitQueue.push(resolve);
+    });
+  }
+
+  release(): void {
+    if (this.waitQueue.length > 0) {
+      const resolve = this.waitQueue.shift()!;
+      resolve();
+    } else {
+      this.permits++;
+    }
+  }
+}
 
 @Injectable()
 export class FaceApiService {
   private modelsLoaded = false;
   private readonly modelPath = path.join(process.cwd(), 'models');
 
+  // Limit concurrent face verification requests to prevent server overload
+  private readonly faceVerificationSemaphore = new Semaphore(3);
+
+  // Cache for face descriptors to avoid recomputing
+  private readonly faceDescriptorCache = new Map<string, Float32Array>();
+  private readonly cacheExpiry = new Map<string, number>();
+  private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
   constructor(
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
     @InjectRepository(Class)
     private classRepository: Repository<Class>,
+    @InjectRepository(Schedule)
+    private scheduleRepository: Repository<Schedule>,
     private readonly attendanceService: AttendanceService,
   ) {
     // Ensure models directory exists
     if (!fs.existsSync(this.modelPath)) {
       fs.mkdirSync(this.modelPath, { recursive: true });
     }
+  }
+
+  // Clean up expired cache entries
+  private cleanupCache(): void {
+    const now = Date.now();
+    for (const [key, expiry] of this.cacheExpiry.entries()) {
+      if (now > expiry) {
+        this.faceDescriptorCache.delete(key);
+        this.cacheExpiry.delete(key);
+      }
+    }
+  }
+
+  // Get cached face descriptor or compute and cache it
+  private async getCachedFaceDescriptor(
+    imageSource: string,
+  ): Promise<Float32Array | null> {
+    this.cleanupCache();
+
+    const cacheKey = imageSource;
+    const cached = this.faceDescriptorCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const image = await this.loadImage(imageSource);
+      const detection = await faceapi
+        .detectSingleFace(image as any)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (detection && detection.descriptor) {
+        this.faceDescriptorCache.set(cacheKey, detection.descriptor);
+        this.cacheExpiry.set(cacheKey, Date.now() + this.CACHE_TTL);
+        return detection.descriptor;
+      }
+    } catch (error) {
+      console.error('Error computing face descriptor:', error);
+    }
+
+    return null;
   }
 
   private async loadModels() {
@@ -241,128 +323,128 @@ export class FaceApiService {
     scheduleId: number,
     note?: string,
   ): Promise<any> {
+    // Acquire semaphore to limit concurrent requests
+    await this.faceVerificationSemaphore.acquire();
+
     try {
       console.log('=== FACE VERIFICATION START ===');
       console.log('Student ID:', studentId);
       console.log('Schedule ID:', scheduleId);
-      console.log(
-        'Input image type:',
-        image
-          ? image.startsWith('data:image/')
-            ? 'data URL'
-            : 'file path'
-          : 'null',
-      );
 
-      await this.loadModels();
-
-      const student = await this.studentRepository.findOne({
-        where: { id: studentId },
+      // Set timeout for the entire operation
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Face verification timeout')), 30000); // 30 seconds
       });
 
-      if (!student || !student?.avatar) {
-        throw new BadRequestException(
-          'Không tìm thấy sinh viên hoặc ảnh đại diện',
-        );
-      }
-
-      console.log('Student avatar path:', student.avatar);
-
-      // Remove strict data URL validation - let loadImage handle both formats
-      if (!image) {
-        throw new BadRequestException('Ảnh đầu vào không hợp lệ');
-      }
-
-      console.log('Loading input image...');
-      const inputImage = await this.loadImage(image);
-      console.log('Input image loaded successfully');
-
-      console.log('Loading reference image...');
-      const referenceImage = await this.loadImage(student.avatar);
-      console.log('Reference image loaded successfully');
-
-      console.log('Detecting face in input image...');
-      const inputDetection = await faceapi
-        .detectSingleFace(inputImage as any)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!inputDetection) {
-        console.log('No face detected in input image');
-        throw new BadRequestException(
-          'Không phát hiện được khuôn mặt trong ảnh đầu vào',
-        );
-      }
-      console.log('Face detected in input image');
-
-      console.log('Detecting face in reference image...');
-      const referenceDetection = await faceapi
-        .detectSingleFace(referenceImage as any)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!referenceDetection) {
-        console.log('No face detected in reference image');
-        throw new BadRequestException(
-          'Không phát hiện được khuôn mặt trong ảnh đại diện',
-        );
-      }
-      console.log('Face detected in reference image');
-
-      const distance = faceapi.euclideanDistance(
-        inputDetection.descriptor,
-        referenceDetection.descriptor,
-      );
-
-      console.log('Face distance:', distance);
-
-      // Ngưỡng khoảng cách để xác định là cùng một người
-      const threshold = 0.6;
-      const matched = distance < threshold;
-
-      // Nếu matched, lưu điểm danh vào DB
-      if (matched) {
-        // Lấy classId và teacherId từ student và schedule nếu cần
-        const classId = student.class ? student.class.id : undefined;
-        // Nếu cần lấy teacherId từ schedule hoặc truyền từ FE, bạn có thể bổ sung logic lấy teacherId phù hợp
-        let teacherId = undefined;
-        // Nếu student có teacher hoặc bạn có thể lấy từ schedule, hãy bổ sung logic ở đây
-        // Ở đây tạm để undefined, bạn cần truyền đúng teacherId từ FE hoặc lấy từ DB
-        if (!classId) {
-          console.warn('Không tìm thấy classId cho student');
-        }
-        if (!teacherId) {
-          console.warn(
-            'Bạn cần truyền teacherId vào verifyFace hoặc lấy từ schedule',
-          );
-        }
-        await this.attendanceService.markAttendance({
-          classId,
-          studentId,
-          teacherId,
-          scheduleId,
-          status: 1, // 1 = điểm danh thành công
-          note,
-        });
-      }
-      return {
-        success: matched,
-        message: matched
-          ? 'Điểm danh thành công'
-          : 'Khuôn mặt không trùng khớp',
+      const verificationPromise = this.performFaceVerification(
+        image,
         studentId,
         scheduleId,
-        matched,
-        distance,
-        timestamp: new Date().toISOString(),
-      };
+        note,
+      );
+
+      const result = await Promise.race([verificationPromise, timeoutPromise]);
+      return result;
     } catch (error) {
       console.error('Error in verifyFace:', error);
       if (error instanceof BadRequestException) {
         throw error;
       }
       throw new BadRequestException(`Lỗi xác thực khuôn mặt: ${error.message}`);
+    } finally {
+      // Always release the semaphore
+      this.faceVerificationSemaphore.release();
     }
+  }
+
+  private async performFaceVerification(
+    image: string,
+    studentId: number,
+    scheduleId: number,
+    note?: string,
+  ): Promise<any> {
+    await this.loadModels();
+
+    const student = await this.studentRepository.findOne({
+      where: { id: studentId },
+    });
+
+    if (!student || !student?.avatar) {
+      throw new BadRequestException(
+        'Không tìm thấy sinh viên hoặc ảnh đại diện',
+      );
+    }
+
+    console.log('Student avatar path:', student.avatar);
+
+    if (!image) {
+      throw new BadRequestException('Ảnh đầu vào không hợp lệ');
+    }
+
+    // Use cached face descriptors when possible
+    console.log('Getting input face descriptor...');
+    const inputDescriptor = await this.getCachedFaceDescriptor(image);
+
+    if (!inputDescriptor) {
+      throw new BadRequestException(
+        'Không phát hiện được khuôn mặt trong ảnh đầu vào',
+      );
+    }
+
+    console.log('Getting reference face descriptor...');
+    const referenceDescriptor = await this.getCachedFaceDescriptor(
+      student.avatar,
+    );
+
+    if (!referenceDescriptor) {
+      throw new BadRequestException(
+        'Không phát hiện được khuôn mặt trong ảnh đại diện',
+      );
+    }
+
+    const distance = faceapi.euclideanDistance(
+      inputDescriptor,
+      referenceDescriptor,
+    );
+
+    console.log('Face distance:', distance);
+
+    // Ngưỡng khoảng cách để xác định là cùng một người
+    const threshold = 0.6;
+    const matched = distance < threshold;
+
+    // Nếu matched, lưu điểm danh vào DB
+    if (matched) {
+      const schedule = await this.scheduleRepository.findOne({
+        where: { id: scheduleId },
+        relations: ['class', 'teacher'],
+      });
+
+      if (!schedule) {
+        throw new BadRequestException('Không tìm thấy lịch học');
+      }
+
+      const attendanceData = {
+        studentId: student.id,
+        classId: schedule.class?.id || null,
+        teacherId: schedule.teacher?.id || null,
+        scheduleId,
+        status: 1,
+        note: 'Xác thực bằng khuôn mặt',
+      };
+
+      await this.attendanceService.markAttendance(attendanceData);
+    }
+
+    return {
+      success: matched,
+      message: matched ? 'Điểm danh thành công' : 'Khuôn mặt không trùng khớp',
+      studentId,
+      scheduleId,
+      matched,
+      distance,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   async verifyClass(
@@ -484,5 +566,19 @@ export class FaceApiService {
         `Lỗi xác thực khuôn mặt lớp học: ${error.message}`,
       );
     }
+  }
+
+  // Get server status information
+  async getStatus(): Promise<any> {
+    this.cleanupCache();
+
+    return {
+      modelsLoaded: this.modelsLoaded,
+      cacheSize: this.faceDescriptorCache.size,
+      cacheEntries: Array.from(this.faceDescriptorCache.keys()).slice(0, 5), // Show first 5 cache keys
+      semaphoreAvailable: (this.faceVerificationSemaphore as any).permits || 0,
+      timestamp: new Date().toISOString(),
+      memoryUsage: process.memoryUsage(),
+    };
   }
 }

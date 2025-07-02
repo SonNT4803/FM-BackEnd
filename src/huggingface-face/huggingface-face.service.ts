@@ -14,7 +14,7 @@ import * as http from 'http';
 @Injectable()
 export class HuggingfaceFaceService {
   private faceDescriptors: Map<number, string> = new Map();
-  private readonly similarityThreshold = 0.8; // Ngưỡng tương đồng
+  private readonly similarityThreshold = 0.1; // Ngưỡng tương đồng (giảm xuống để test)
 
   constructor(
     @InjectRepository(Student)

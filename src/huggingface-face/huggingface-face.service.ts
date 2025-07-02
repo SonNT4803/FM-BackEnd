@@ -301,7 +301,6 @@ export class HuggingfaceFaceService {
           teacherId: null, // Sẽ được cập nhật từ schedule
           scheduleId,
           status: 1, // present
-          note: note || 'Xác thực bằng khuôn mặt với AI hỗ trợ',
         };
         attendance =
           await this.attendanceService.markAttendance(attendanceData);

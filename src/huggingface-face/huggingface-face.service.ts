@@ -180,7 +180,6 @@ export class HuggingfaceFaceService {
             ? 'base64'
             : 'file',
           descriptorLength: descriptor.length,
-          note: 'Đây là demo service sử dụng simplified face recognition',
         },
       };
     } catch (error) {
@@ -242,7 +241,6 @@ export class HuggingfaceFaceService {
             verified: false,
             similarity: similarity,
             threshold: this.similarityThreshold,
-            note: 'Đây là demo service sử dụng simplified face recognition',
           },
         };
       }
@@ -294,7 +292,6 @@ export class HuggingfaceFaceService {
             status: attendance.status,
             updatedAt: attendance.updatedAt,
           },
-          note: 'Đây là demo service sử dụng simplified face recognition',
         },
       };
     } catch (error) {
@@ -383,7 +380,6 @@ export class HuggingfaceFaceService {
             status: record.status,
             updatedAt: record.updatedAt,
           })),
-          note: 'Đây là demo service sử dụng simplified face recognition',
         },
       };
     } catch (error) {
@@ -419,7 +415,6 @@ export class HuggingfaceFaceService {
           studentId,
           studentName: student.name,
           deleted,
-          note: 'Đây là demo service sử dụng simplified face recognition',
         },
       };
     } catch (error) {
@@ -438,7 +433,6 @@ export class HuggingfaceFaceService {
       data: {
         registeredCount: this.faceDescriptors.size,
         totalStudents: await this.studentRepository.count(),
-        note: 'Đây là demo service sử dụng simplified face recognition',
       },
     };
   }
@@ -474,7 +468,6 @@ export class HuggingfaceFaceService {
               ? 'base64'
               : 'file'
             : null,
-          note: 'Đây là demo service sử dụng simplified face recognition',
         },
       };
     } catch (error) {

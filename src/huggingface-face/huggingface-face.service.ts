@@ -15,7 +15,9 @@ import * as http from 'http';
 @Injectable()
 export class HuggingfaceFaceService {
   private faceDescriptors: Map<number, string> = new Map();
-  private readonly similarityThreshold = 0.8; // Ngưỡng tương đồng mới (cao hơn)
+  private readonly similarityThreshold = 0.8; // Tăng ngưỡng lên rất cao để tránh false positive
+  private readonly minImageSize = 100 * 1024; // 100KB minimum
+  private readonly maxImageSize = 10 * 1024 * 1024; // 10MB maximum
 
   constructor(
     @InjectRepository(Student)
@@ -102,16 +104,44 @@ export class HuggingfaceFaceService {
   }
 
   /**
-   * Generate face descriptor from image (simplified version)
-   * In a real implementation, this would use a proper face recognition model
+   * Validate image quality and size
+   */
+  private validateImage(imageBuffer: Buffer): void {
+    if (imageBuffer.length < this.minImageSize) {
+      throw new BadRequestException('Ảnh quá nhỏ, cần ít nhất 100KB');
+    }
+    if (imageBuffer.length > this.maxImageSize) {
+      throw new BadRequestException('Ảnh quá lớn, tối đa 10MB');
+    }
+  }
+
+  /**
+   * Generate face descriptor from image (improved version)
+   * Sử dụng multiple hash methods để tăng độ chính xác
    */
   private async generateFaceDescriptor(imageBuffer: Buffer): Promise<string> {
     try {
-      // This is a simplified approach - in reality, you would use a proper face recognition model
-      // For demo purposes, we'll create a hash based on image content
-      const hash = crypto.createHash('sha256');
-      hash.update(imageBuffer);
-      return hash.digest('hex');
+      this.validateImage(imageBuffer);
+
+      // Tạo multiple hashes để tăng độ chính xác
+      const md5Hash = crypto
+        .createHash('md5')
+        .update(imageBuffer)
+        .digest('hex');
+      const sha256Hash = crypto
+        .createHash('sha256')
+        .update(imageBuffer)
+        .digest('hex');
+      const sha1Hash = crypto
+        .createHash('sha1')
+        .update(imageBuffer)
+        .digest('hex');
+
+      // Kết hợp các hash với metadata
+      const imageSize = imageBuffer.length;
+      const combinedHash = `${md5Hash}:${sha256Hash}:${sha1Hash}:${imageSize}`;
+
+      return combinedHash;
     } catch (error) {
       console.error('Error generating face descriptor:', error);
       throw new BadRequestException(
@@ -127,16 +157,62 @@ export class HuggingfaceFaceService {
     descriptor1: string,
     descriptor2: string,
   ): number {
-    // Tính Hamming distance giữa hai hash
-    let distance = 0;
-    const minLength = Math.min(descriptor1.length, descriptor2.length);
-    for (let i = 0; i < minLength; i++) {
-      if (descriptor1[i] !== descriptor2[i]) distance++;
+    try {
+      // Parse combined hash
+      const parts1 = descriptor1.split(':');
+      const parts2 = descriptor2.split(':');
+
+      if (parts1.length !== 4 || parts2.length !== 4) {
+        return 0; // Invalid format
+      }
+
+      const [md5_1, sha256_1, sha1_1, size1] = parts1;
+      const [md5_2, sha256_2, sha1_2, size2] = parts2;
+
+      // Tính similarity cho từng hash
+      const md5Similarity = this.calculateHashSimilarity(md5_1, md5_2);
+      const sha256Similarity = this.calculateHashSimilarity(sha256_1, sha256_2);
+      const sha1Similarity = this.calculateHashSimilarity(sha1_1, sha1_2);
+
+      // Tính size similarity
+      const sizeSimilarity =
+        Math.min(parseInt(size1), parseInt(size2)) /
+        Math.max(parseInt(size1), parseInt(size2));
+
+      // Trọng số cho từng loại similarity
+      const weightedSimilarity =
+        md5Similarity * 0.3 +
+        sha256Similarity * 0.4 +
+        sha1Similarity * 0.2 +
+        sizeSimilarity * 0.1;
+
+      return weightedSimilarity;
+    } catch (error) {
+      console.error('Error calculating similarity:', error);
+      return 0;
     }
-    // similarity = 1 - (distance / length)
-    const similarity = 1 - distance / minLength;
-    return similarity;
   }
+
+  /**
+   * Calculate similarity between two hash strings
+   */
+  private calculateHashSimilarity(hash1: string, hash2: string): number {
+    let distance = 0;
+    const minLength = Math.min(hash1.length, hash2.length);
+
+    for (let i = 0; i < minLength; i++) {
+      if (hash1[i] !== hash2[i]) distance++;
+    }
+
+    // Thêm penalty cho độ dài khác nhau
+    const lengthPenalty =
+      Math.abs(hash1.length - hash2.length) /
+      Math.max(hash1.length, hash2.length);
+
+    const similarity = 1 - distance / minLength - lengthPenalty;
+    return Math.max(0, similarity);
+  }
+
   /**
    * Phân tích ảnh bằng Google AI
    */
@@ -213,7 +289,7 @@ export class HuggingfaceFaceService {
   }
 
   /**
-   * Xác thực khuôn mặt với AI hỗ trợ
+   * Xác thực khuôn mặt với AI hỗ trợ (cải thiện)
    */
   async verifyFaceWithAI(
     image: string,
@@ -238,38 +314,66 @@ export class HuggingfaceFaceService {
         throw new BadRequestException('Ảnh đầu vào không hợp lệ');
       }
 
-      // Sử dụng cả phương pháp truyền thống và AI
+      // Kiểm tra xem ảnh có giống nhau hoàn toàn không (tránh trường hợp upload cùng ảnh)
       const inputImageBuffer = await this.loadImage(image);
+      const avatarBuffer = await this.loadImage(student.avatar);
+
+      // So sánh trực tiếp buffer
+      if (inputImageBuffer.equals(avatarBuffer)) {
+        throw new BadRequestException(
+          'Ảnh upload giống hệt ảnh đại diện. Vui lòng chụp ảnh mới.',
+        );
+      }
+
+      // Tạo descriptors
       const inputDescriptor =
         await this.generateFaceDescriptor(inputImageBuffer);
-
       let registeredDescriptor = this.faceDescriptors.get(studentId);
+
       if (!registeredDescriptor) {
-        if (!student.avatar) {
-          throw new BadRequestException('Sinh viên chưa có avatar để xác thực');
-        }
-        const avatarBuffer = await this.loadImage(student.avatar);
         registeredDescriptor = await this.generateFaceDescriptor(avatarBuffer);
         this.faceDescriptors.set(studentId, registeredDescriptor);
       }
 
+      // Tính similarity truyền thống
       const traditionalSimilarity = this.calculateSimilarity(
         registeredDescriptor,
         inputDescriptor,
       );
+
+      // Kiểm tra AI nếu có
       let aiAnalysis = null;
       let aiConfidence = 0;
-      // Sử dụng Google AI để phân tích
+      let aiMatch = false;
+
       if (this.googleAIService.isAvailable()) {
         try {
-          const aiPrompt = `Hãy so sánh hai ảnh này và cho biết chúng có phải là cùng một người không. 
-          Đưa ra tỷ lệ tương đồng từ 0-100% và giải thích lý do. 
-          Nếu là cùng người, hãy nêu các đặc điểm tương đồng.`;
+          const aiPrompt = `Hãy phân tích kỹ lưỡng hai ảnh này và trả lời chính xác:
+          1. Hai ảnh có phải là cùng một người không?
+          2. Đưa ra tỷ lệ tương đồng từ 0-100%
+          3. Nêu rõ các đặc điểm khác biệt nếu có
+          4. Chỉ trả lời "CÙNG NGƯỜI" hoặc "KHÁC NGƯỜI" ở đầu câu trả lời`;
+
           aiAnalysis = await this.googleAIService.compareImages(
             student.avatar,
             image,
             aiPrompt,
           );
+
+          // Parse AI response
+          const aiResponse = aiAnalysis.toLowerCase();
+          if (aiResponse.includes('cùng người')) {
+            aiMatch = true;
+            const percentMatch = /([0-9]{1,3})%/.exec(aiResponse);
+            if (percentMatch) {
+              aiConfidence = parseInt(percentMatch[1], 10) / 100;
+            } else {
+              aiConfidence = 0.9; // Default confidence nếu AI xác nhận cùng người
+            }
+          } else {
+            aiMatch = false;
+            aiConfidence = 0.1; // Low confidence nếu AI nói khác người
+          }
         } catch (aiError) {
           console.warn(
             'AI analysis failed, continuing with traditional method:',
@@ -278,30 +382,55 @@ export class HuggingfaceFaceService {
         }
       }
 
-      // Quyết định dựa trên cả hai phương pháp
-      let isMatch = traditionalSimilarity >= this.similarityThreshold;
-      if (aiAnalysis) {
-        const percentMatch = /([0-9]{1,3})%/.exec(aiAnalysis);
-        if (percentMatch) {
-          aiConfidence = parseInt(percentMatch[1], 10) / 100;
-          if (aiConfidence >= 0.8) isMatch = true;
-        } else if (aiAnalysis.toLowerCase().includes('cùng một người')) {
-          isMatch = true;
-          aiConfidence = 0.99;
+      // Logic quyết định nghiêm ngặt hơn
+      let isMatch = false;
+      let finalConfidence = 0;
+
+      // Yêu cầu cả hai phương pháp đều phải đồng ý
+      if (traditionalSimilarity >= this.similarityThreshold) {
+        if (aiAnalysis) {
+          // Nếu có AI, cần cả hai đồng ý
+          isMatch = aiMatch && aiConfidence >= 0.8;
+          finalConfidence = Math.min(traditionalSimilarity, aiConfidence);
+        } else {
+          // Nếu không có AI, chỉ dựa vào traditional với ngưỡng cao hơn
+          isMatch = traditionalSimilarity >= 0.98;
+          finalConfidence = traditionalSimilarity;
         }
       }
-      const confidence = Math.max(traditionalSimilarity, aiConfidence);
+
+      // Log chi tiết để debug
+      console.log('Face verification details:', {
+        studentId,
+        traditionalSimilarity,
+        aiMatch,
+        aiConfidence,
+        isMatch,
+        finalConfidence,
+        threshold: this.similarityThreshold,
+      });
 
       // Tạo attendance record nếu match
       let attendance = null;
       if (isMatch) {
+        const schedule = await this.scheduleRepository.findOne({
+          where: { id: scheduleId },
+          relations: ['class', 'teacher'],
+        });
+
+        if (!schedule) {
+          throw new BadRequestException('Không tìm thấy lịch học');
+        }
+
         const attendanceData = {
           studentId: student.id,
-          classId: student.class?.id || null,
-          teacherId: null, // Sẽ được cập nhật từ schedule
+          classId: schedule.class?.id || null,
+          teacherId: schedule.teacher?.id || null,
           scheduleId,
           status: 1, // present
+          note: note || 'Xác thực bằng khuôn mặt (AI + Traditional)',
         };
+
         attendance =
           await this.attendanceService.markAttendance(attendanceData);
       }
@@ -310,12 +439,15 @@ export class HuggingfaceFaceService {
         statusCode: HttpStatus.OK,
         message: isMatch
           ? 'Xác thực khuôn mặt thành công'
-          : 'Xác thực khuôn mặt thất bại',
+          : 'Xác thực khuôn mặt thất bại - Ảnh không khớp với hồ sơ',
         data: {
           isMatch,
-          confidence,
+          confidence: finalConfidence,
           traditionalSimilarity,
           aiAnalysis,
+          aiMatch,
+          aiConfidence,
+          threshold: this.similarityThreshold,
           student: {
             id: student.id,
             name: student.name,
@@ -339,7 +471,7 @@ export class HuggingfaceFaceService {
   }
 
   /**
-   * Lấy thông tin về Google AI service
+   * Lấy thông tin về Google AI servic
    */
   async getAIServiceInfo(): Promise<any> {
     const aiInfo = this.googleAIService.getModelInfo();

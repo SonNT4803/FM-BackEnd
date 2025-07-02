@@ -23,18 +23,15 @@ export class UploadController {
       throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
     }
     try {
-      // Đọc dữ liệu từ buffer của tệp
       const workbook = XLSX.read(file.buffer, { type: 'buffer' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-
-      // Chuyển đổi sheet thành JSON với tùy chọn { header: 1 }
-      const data: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-      // Chuyển đổi dữ liệu từ mảng hai chiều thành định dạng cột
-      const columns = this.convertRowsToColumns(data);
-      // Gọi hàm importData từ service
-      await this.uploadService.importData(columns);
+      const allData = {};
+      for (const sheetName of workbook.SheetNames) {
+        allData[sheetName] = XLSX.utils.sheet_to_json(
+          workbook.Sheets[sheetName],
+          { defval: '' },
+        );
+      }
+      await this.uploadService.importMultiSheet(allData);
       return {
         statusCode: HttpStatus.OK,
         message: 'File uploaded successfully',

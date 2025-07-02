@@ -62,6 +62,22 @@ export class AzureFaceController {
     );
   }
 
+  @Post('verify-face-direct')
+  @ApiOperation({
+    summary:
+      'Xác thực khuôn mặt sinh viên (so sánh trực tiếp avatar và ảnh upload, không cần đăng ký trước)',
+  })
+  @ApiResponse({ status: 200, description: 'Xác thực thành công' })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ' })
+  async verifyFaceDirect(@Body() verifyFaceDto: VerifyFaceDto) {
+    return await this.azureFaceService.verifyFaceDirect(
+      verifyFaceDto.image,
+      verifyFaceDto.studentId,
+      verifyFaceDto.scheduleId,
+      verifyFaceDto.note,
+    );
+  }
+
   @Delete('delete-student/:studentId')
   @ApiOperation({ summary: 'Xóa khuôn mặt sinh viên' })
   @ApiResponse({ status: 200, description: 'Xóa thành công' })

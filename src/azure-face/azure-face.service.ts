@@ -9,6 +9,7 @@ import { Student } from '../entities/center/student.entity';
 import { Schedule } from '../entities/schedule.entity';
 import * as path from 'path';
 import * as fs from 'fs';
+import axios from 'axios';
 
 @Injectable()
 export class AzureFaceService {
@@ -66,31 +67,36 @@ export class AzureFaceService {
    */
   private async loadImage(imageSource: string): Promise<Buffer> {
     try {
-      // If it's a base64 data URL
+      // Nếu là base64
       if (imageSource.startsWith('data:image/')) {
         const base64Data = imageSource.replace(/^data:image\/\w+;base64,/, '');
         return Buffer.from(base64Data, 'base64');
       }
 
-      // If it's a file path (from uploads folder)
+      // Nếu là đường dẫn uploads, chuyển thành URL public
+      const PUBLIC_DOMAIN = 'https://fm-backend-izjp.onrender.com';
+      if (imageSource.startsWith('/uploads/')) {
+        imageSource = PUBLIC_DOMAIN + imageSource;
+      }
+
+      // Nếu là URL, tải về
+      if (
+        imageSource.startsWith('http://') ||
+        imageSource.startsWith('https://')
+      ) {
+        const response = await axios.get(imageSource, {
+          responseType: 'arraybuffer',
+        });
+        return Buffer.from(response.data, 'binary');
+      }
+
+      // Nếu là file local
       let filePath = imageSource;
-
-      // Remove leading slash if exists and make it relative to project root
-      if (filePath.startsWith('/')) {
-        filePath = filePath.substring(1); // Remove leading slash
-      }
-
-      // If it's not absolute, make it relative to project root
-      if (!path.isAbsolute(filePath)) {
+      if (filePath.startsWith('/')) filePath = filePath.substring(1);
+      if (!path.isAbsolute(filePath))
         filePath = path.join(process.cwd(), filePath);
-      }
-
-      // Check if file exists
-      if (!fs.existsSync(filePath)) {
+      if (!fs.existsSync(filePath))
         throw new Error(`File not found: ${filePath}`);
-      }
-
-      // Read file and return buffer
       return fs.readFileSync(filePath);
     } catch (error) {
       console.error('Error loading image:', error);
@@ -616,6 +622,105 @@ export class AzureFaceService {
     } catch (error) {
       console.error('Error in testAvatarFormat:', error);
       throw new BadRequestException(`Lỗi kiểm tra ảnh: ${error.message}`);
+    }
+  }
+
+  async verifyFaceDirect(
+    image: string,
+    studentId: number,
+    scheduleId: number,
+    note?: string,
+  ): Promise<any> {
+    try {
+      if (!this.faceClient) {
+        throw new BadRequestException('Azure Face API not configured');
+      }
+
+      const student = await this.studentRepository.findOne({
+        where: { id: studentId },
+      });
+      if (!student) throw new BadRequestException('Không tìm thấy sinh viên');
+      if (!student.avatar)
+        throw new BadRequestException('Sinh viên chưa có avatar');
+      if (!image || !this.isValidAvatar(image))
+        throw new BadRequestException('Ảnh đầu vào không hợp lệ');
+
+      // Detect face in avatar
+      const avatarBuffer = await this.loadImage(student.avatar);
+      const avatarFaces = await this.faceClient.face.detectWithStream(
+        avatarBuffer,
+        { returnFaceId: true, recognitionModel: 'recognition_04' },
+      );
+      if (!avatarFaces || avatarFaces.length === 0)
+        throw new BadRequestException(
+          'Không phát hiện được khuôn mặt trong avatar',
+        );
+      const avatarFaceId = avatarFaces[0].faceId;
+
+      // Detect face in input image
+      const inputBuffer = await this.loadImage(image);
+      const inputFaces = await this.faceClient.face.detectWithStream(
+        inputBuffer,
+        { returnFaceId: true, recognitionModel: 'recognition_04' },
+      );
+      if (!inputFaces || inputFaces.length === 0)
+        throw new BadRequestException(
+          'Không phát hiện được khuôn mặt trong ảnh upload',
+        );
+      const inputFaceId = inputFaces[0].faceId;
+
+      // So sánh trực tiếp 2 faceId
+      const verifyResult = await this.faceClient.face.verifyFaceToFace(
+        avatarFaceId,
+        inputFaceId,
+      );
+      const isVerified =
+        verifyResult.isIdentical && verifyResult.confidence >= 0.5;
+
+      // Get schedule information
+      const schedule = await this.scheduleRepository.findOne({
+        where: { id: scheduleId },
+        relations: ['class', 'teacher'],
+      });
+      let attendance = null;
+      if (isVerified && schedule) {
+        const attendanceData = {
+          studentId: student.id,
+          classId: schedule.class.id,
+          teacherId: schedule.teacher.id,
+          scheduleId,
+          status: 1, // present
+          note: note || 'Xác thực bằng khuôn mặt (so sánh trực tiếp)',
+        };
+        attendance =
+          await this.attendanceService.markAttendance(attendanceData);
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: isVerified
+          ? 'Xác thực khuôn mặt thành công'
+          : 'Xác thực khuôn mặt thất bại',
+        data: {
+          isMatch: isVerified,
+          confidence: verifyResult.confidence,
+          student: {
+            id: student.id,
+            name: student.name,
+            studentId: student.studentId,
+          },
+          attendance: attendance
+            ? {
+                id: attendance.id,
+                status: attendance.status,
+                updatedAt: attendance.updatedAt,
+              }
+            : null,
+        },
+      };
+    } catch (error) {
+      console.error('Error verifying face direct:', error);
+      throw new BadRequestException(`Lỗi xác thực khuôn mặt: ${error.message}`);
     }
   }
 }

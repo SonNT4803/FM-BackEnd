@@ -37,6 +37,7 @@ import { ExamScheduleMasterModule } from './center/exam/exam_schedule_master/exa
 import { ExamRoomModule } from './center/exam/exam_room/exam_room.module';
 import { FaceApiModule } from './face-api/face-api.module';
 import { AzureFaceModule } from './azure-face/azure-face.module';
+import { HuggingfaceFaceModule } from './huggingface-face/huggingface-face.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { StudentResitModule } from './center/student-resit/student-resit.module';
 import { ConfigModule } from '@nestjs/config';
@@ -50,7 +51,7 @@ import { SeedModule } from './seeds/seed.module';
     TypeOrmModule.forRoot({
       type: 'mysql',
       host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT, 10) || 20394 ,
+      port: parseInt(process.env.DB_PORT, 10) || 20394,
       username: process.env.DB_USER,
       // password: 'lht@39412990',
       password: process.env.DB_PASS,
@@ -96,6 +97,7 @@ import { SeedModule } from './seeds/seed.module';
     ExamRoomModule,
     FaceApiModule,
     AzureFaceModule,
+    HuggingfaceFaceModule,
     EvaluationModule,
     StudentResitModule,
     SeedModule,

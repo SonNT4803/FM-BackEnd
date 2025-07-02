@@ -8,6 +8,8 @@ import { Schedule } from '../entities/schedule.entity';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import * as https from 'https';
+import * as http from 'http';
 
 @Injectable()
 export class HuggingfaceFaceService {
@@ -29,13 +31,21 @@ export class HuggingfaceFaceService {
    */
   private async loadImage(imageSource: string): Promise<Buffer> {
     try {
-      // If it's a base64 data URL
+      // Nếu là base64
       if (imageSource.startsWith('data:image/')) {
         const base64Data = imageSource.replace(/^data:image\/\w+;base64,/, '');
         return Buffer.from(base64Data, 'base64');
       }
 
-      // If it's a file path
+      // Nếu là URL
+      if (
+        imageSource.startsWith('http://') ||
+        imageSource.startsWith('https://')
+      ) {
+        return await this.downloadImageFromUrl(imageSource);
+      }
+
+      // Nếu là file path
       let filePath = imageSource;
       if (filePath.startsWith('/')) {
         filePath = filePath.substring(1);
@@ -53,6 +63,25 @@ export class HuggingfaceFaceService {
       console.error('Error loading image:', error);
       throw new BadRequestException(`Không thể đọc ảnh: ${error.message}`);
     }
+  }
+
+  private async downloadImageFromUrl(url: string): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const client = url.startsWith('https') ? https : http;
+      client
+        .get(url, (res) => {
+          if (res.statusCode !== 200) {
+            reject(
+              new Error(`Failed to get image. Status code: ${res.statusCode}`),
+            );
+            return;
+          }
+          const data: Uint8Array[] = [];
+          res.on('data', (chunk) => data.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(data)));
+        })
+        .on('error', reject);
+    });
   }
 
   /**

@@ -26,7 +26,7 @@ export class UserService {
 
   async findAll(
     page: number = 1,
-    limit: number = 10,
+    limit: number = 10000,
   ): Promise<{ data: UserDTO[]; total: number }> {
     const [users, total] = await this.userRepository.findAndCount({
       take: limit,

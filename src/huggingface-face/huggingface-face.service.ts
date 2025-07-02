@@ -45,7 +45,15 @@ export class HuggingfaceFaceService {
         return await this.downloadImageFromUrl(imageSource);
       }
 
-      // Nếu là file path
+      // Nếu là đường dẫn file vật lý, tự động chuyển thành URL public nếu có domain
+      // Giả sử domain là https://yourdomain.com
+      const PUBLIC_DOMAIN = 'https://admin-fm.vercel.app/';
+      if (imageSource.startsWith('/uploads/')) {
+        const url = PUBLIC_DOMAIN + imageSource;
+        return await this.downloadImageFromUrl(url);
+      }
+
+      // Nếu là file path local (trường hợp đặc biệt)
       let filePath = imageSource;
       if (filePath.startsWith('/')) {
         filePath = filePath.substring(1);

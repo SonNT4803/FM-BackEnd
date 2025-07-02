@@ -47,7 +47,7 @@ export class HuggingfaceFaceService {
 
       // Nếu là đường dẫn file vật lý, tự động chuyển thành URL public nếu có domain
       // Giả sử domain là https://yourdomain.com
-      const PUBLIC_DOMAIN = 'https://admin-fm.vercel.app/';
+      const PUBLIC_DOMAIN = 'https://fm-backend-izjp.onrender.com';
       if (imageSource.startsWith('/uploads/')) {
         const url = PUBLIC_DOMAIN + imageSource;
         return await this.downloadImageFromUrl(url);

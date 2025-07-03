@@ -132,7 +132,7 @@ export class GoogleAIService {
 
       // Tạo prompt mặc định nếu không có
       const defaultPrompt =
-        'Hãy mô tả chi tiết về ảnh này. Nếu có khuôn mặt, hãy mô tả các đặc điểm chính.';
+        'Bạn là một chuyên gia nhận dạng khuôn mặt. Hãy so sánh hai bức ảnh sau và xác định xem chúng có phải là cùng một người hay không.NHIỆM VỤ: 1. Phân tích kỹ lưỡng các đặc điểm khuôn mặt trong cả hai ảnh 2. So sánh: hình dáng mặt, mắt, mũi, miệng, tai, tổng thể gương mặt 3. Đưa ra kết luận có phải cùng một người hay không 4. Cho điểm similarity từ 0 - 100(0 = hoàn toàn khác người, 100 = chắc chắn cùng người) 5. Đánh giá mức độ tin cậy: HIGH / MEDIUM / LOW LƯU Ý: Bỏ qua sự khác biệt về ánh sáng, góc chụp, chất lượng ảnh Tập trung vào các đặc điểm sinh trắc học cơ bản Nếu không thấy rõ mặt người trong ảnh nào thì báo LOW confidence ĐỊNH DẠNG TRẢ LỜI: RESULT: [SAME / DIFFERENT] SIMILARITY: [0 - 100] CONFIDENCE: [HIGH / MEDIUM / LOW] ANALYSIS: [Giải thích chi tiết lý do so sánh, ít nhất 2 - 3 câu về các đặc điểm cụ thể] Hãy phân tích và trả lời: ';
       const finalPrompt = prompt || defaultPrompt;
 
       const result = await visionModel.generateContent([
@@ -228,7 +228,7 @@ export class GoogleAIService {
 
       // Tạo prompt mặc định nếu không có
       const defaultPrompt =
-        'Hãy so sánh hai ảnh này và cho biết chúng có phải là cùng một người không. Đưa ra tỷ lệ tương đồng từ 0-100%.';
+        'Bạn là một chuyên gia nhận dạng khuôn mặt. Hãy so sánh hai bức ảnh sau và xác định xem chúng có phải là cùng một người hay không.NHIỆM VỤ: 1. Phân tích kỹ lưỡng các đặc điểm khuôn mặt trong cả hai ảnh 2. So sánh: hình dáng mặt, mắt, mũi, miệng, tai, tổng thể gương mặt 3. Đưa ra kết luận có phải cùng một người hay không 4. Cho điểm similarity từ 0 - 100(0 = hoàn toàn khác người, 100 = chắc chắn cùng người) 5. Đánh giá mức độ tin cậy: HIGH / MEDIUM / LOW LƯU Ý: Bỏ qua sự khác biệt về ánh sáng, góc chụp, chất lượng ảnh Tập trung vào các đặc điểm sinh trắc học cơ bản Nếu không thấy rõ mặt người trong ảnh nào thì báo LOW confidence ĐỊNH DẠNG TRẢ LỜI: RESULT: [SAME / DIFFERENT] SIMILARITY: [0 - 100] CONFIDENCE: [HIGH / MEDIUM / LOW] ANALYSIS: [Giải thích chi tiết lý do so sánh, ít nhất 2 - 3 câu về các đặc điểm cụ thể] Hãy phân tích và trả lời: ';
       const finalPrompt = prompt || defaultPrompt;
 
       const result = await visionModel.generateContent([

@@ -345,6 +345,7 @@ export class HuggingfaceFaceService {
       let aiAnalysis = null;
       let aiConfidence = 0;
       let aiMatch = false;
+      let aiErrorMessage = null;
 
       if (this.googleAIService.isAvailable()) {
         try {
@@ -375,6 +376,10 @@ export class HuggingfaceFaceService {
             aiConfidence = 0.1; // Low confidence nếu AI nói khác người
           }
         } catch (aiError) {
+          aiAnalysis = null;
+          aiMatch = false;
+          aiConfidence = 0;
+          aiErrorMessage = aiError.message || String(aiError);
           console.warn(
             'AI analysis failed, continuing with traditional method:',
             aiError,
@@ -382,12 +387,16 @@ export class HuggingfaceFaceService {
         }
       }
 
-      // Logic quyết định nghiêm ngặt hơn
+      // Logic quyết định cải thiện - AI có thể override traditional
       let isMatch = false;
       let finalConfidence = 0;
 
-      // Yêu cầu cả hai phương pháp đều phải đồng ý
-      if (traditionalSimilarity >= this.similarityThreshold) {
+      if (aiAnalysis && aiMatch && aiConfidence >= 0.8) {
+        // Nếu AI xác nhận với confidence cao, override traditional
+        isMatch = true;
+        finalConfidence = aiConfidence;
+      } else if (traditionalSimilarity >= this.similarityThreshold) {
+        // Nếu không có AI hoặc AI không chắc chắn, dựa vào traditional
         if (aiAnalysis) {
           // Nếu có AI, cần cả hai đồng ý
           isMatch = aiMatch && aiConfidence >= 0.8;
@@ -447,6 +456,7 @@ export class HuggingfaceFaceService {
           aiAnalysis,
           aiMatch,
           aiConfidence,
+          aiErrorMessage,
           threshold: this.similarityThreshold,
           student: {
             id: student.id,

@@ -95,67 +95,6 @@ export class FaceApiController {
     };
   }
 
-  @Get('performance-report')
-  async getPerformanceReport() {
-    const report = await this.faceApiService.getPerformanceReport();
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Performance report',
-      data: report,
-    };
-  }
-
-  @Get('test-performance/:studentId')
-  async testPerformance(@Param('studentId') studentId: number) {
-    const result = await this.faceApiService.testPerformance(studentId);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Test performance thành công',
-      data: result,
-    };
-  }
-
-  @Get('test-optimized-performance/:studentId')
-  async testOptimizedPerformance(@Param('studentId') studentId: number) {
-    const result =
-      await this.faceApiService.testOptimizedPerformance(studentId);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Test optimized performance thành công',
-      data: result,
-    };
-  }
-
-  @Get('check-missing-files')
-  async checkMissingFiles() {
-    const result = await this.faceApiService.checkMissingFiles();
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Kiểm tra files missing thành công',
-      data: result,
-    };
-  }
-
-  @Post('sync-file/:studentId')
-  async syncFile(@Param('studentId') studentId: number) {
-    const result = await this.faceApiService.syncFileFromServer(studentId);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Sync file thành công',
-      data: result,
-    };
-  }
-
-  @Post('sync-all-missing-files')
-  async syncAllMissingFiles() {
-    const result = await this.faceApiService.syncAllMissingFiles();
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Sync tất cả files missing thành công',
-      data: result,
-    };
-  }
-
   @Post('verify-face')
   @ApiBearerAuth('JWT-auth')
   async verifyFace(

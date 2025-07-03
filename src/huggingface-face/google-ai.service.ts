@@ -11,7 +11,7 @@ export class GoogleAIService {
 
   constructor() {
     // Khởi tạo Google Generative AI với API key từ environment
-    const apiKey = 'AIzaSyB8700xaHhIfBv9HVGzUfQ7tyM56Mm_DNQ';
+    const apiKey = 'AIzaSyAVRCJ9DgbXiog69hludGpI5pZKB1rvGAo';
     if (!apiKey) {
       console.warn('GOOGLE_AI_API_KEY not found in environment variables');
       return;

@@ -119,7 +119,7 @@ export class GoogleAIService {
 
       // Sử dụng model hỗ trợ vision
       const visionModel = this.genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash-lite-preview-06-17',
       });
 
       // Chuẩn bị image data
@@ -208,7 +208,7 @@ export class GoogleAIService {
       }
 
       const visionModel = this.genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash-lite-preview-06-17',
       });
 
       // Chuẩn bị image data

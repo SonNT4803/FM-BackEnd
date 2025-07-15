@@ -11,7 +11,12 @@ import { AnalyzeImageDto } from './dto/analyze-image.dto';
 import { CompareImagesDto } from './dto/compare-images.dto';
 import { GenerateTextDto } from './dto/generate-text.dto';
 import { VerifyClassDto } from './dto/verify-class.dto';
+import { VerifyClassBatchDto } from './dto/verify-class-batch.dto';
 import { VerifyFaceDto } from './dto/verify-face.dto';
+import {
+  StreamFaceRecognitionDto,
+  StreamFaceRecognitionResponseDto,
+} from './dto/stream-face-recognition.dto';
 import { HuggingfaceFaceService } from './huggingface-face.service';
 
 @ApiTags('huggingface-face')
@@ -57,6 +62,36 @@ export class HuggingfaceFaceController {
     );
   }
 
+  @Post('verify-class-faces-ai')
+  @ApiOperation({
+    summary: 'Xác thực nhiều khuôn mặt cùng lúc cho một lớp học',
+  })
+  @ApiResponse({ status: 200, description: 'Xác thực hàng loạt thành công' })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ' })
+  async verifyClassFacesWithAI(
+    @Body() verifyClassBatchDto: VerifyClassBatchDto,
+  ) {
+    return await this.huggingfaceFaceService.verifyClassFacesWithAI(
+      verifyClassBatchDto.images,
+      verifyClassBatchDto.classId,
+      verifyClassBatchDto.teacherId,
+      verifyClassBatchDto.scheduleId,
+    );
+  }
+
+  @Post('verify-class-face-ai')
+  @ApiOperation({ summary: 'Xác thực một khuôn mặt cho một lớp học' })
+  @ApiResponse({ status: 200, description: 'Xác thực thành công' })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ' })
+  async verifyClassFaceWithAI(@Body() verifyClassDto: VerifyClassDto) {
+    return await this.huggingfaceFaceService.verifyClassFacesWithAI(
+      [verifyClassDto.image],
+      verifyClassDto.classId,
+      verifyClassDto.teacherId,
+      verifyClassDto.scheduleId,
+    );
+  }
+
   @Get('ai-service-info')
   @ApiOperation({ summary: 'Lấy thông tin về Google AI service' })
   @ApiResponse({ status: 200, description: 'Lấy thông tin thành công' })
@@ -73,5 +108,74 @@ export class HuggingfaceFaceController {
       generateTextDto.prompt,
       generateTextDto.context,
     );
+  }
+
+  @Post('stream-face-recognition')
+  @ApiOperation({
+    summary: 'Stream face recognition - Nhận diện khuôn mặt real-time',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Stream recognition thành công',
+    type: StreamFaceRecognitionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ' })
+  async streamFaceRecognition(@Body() streamDto: StreamFaceRecognitionDto) {
+    return await this.huggingfaceFaceService.streamFaceRecognition(
+      streamDto.classId,
+      streamDto.scheduleId,
+      streamDto.imageFrame,
+      streamDto.note,
+    );
+  }
+
+  @Post('batch-stream-face-recognition')
+  @ApiOperation({
+    summary: 'Batch stream face recognition - Xử lý nhiều frame cùng lúc',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Batch stream recognition thành công',
+    type: StreamFaceRecognitionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ' })
+  async batchStreamFaceRecognition(
+    @Body()
+    batchStreamDto: {
+      classId: number;
+      scheduleId: number;
+      imageFrames: string[];
+      note?: string;
+    },
+  ) {
+    return await this.huggingfaceFaceService.batchStreamFaceRecognition(
+      batchStreamDto.classId,
+      batchStreamDto.scheduleId,
+      batchStreamDto.imageFrames,
+      batchStreamDto.note,
+    );
+  }
+
+  @Get('stream-status/:classId')
+  @ApiOperation({ summary: 'Lấy trạng thái stream recognition cho lớp học' })
+  @ApiResponse({ status: 200, description: 'Lấy trạng thái thành công' })
+  async getStreamStatus(@Param('classId', ParseIntPipe) classId: number) {
+    // Lấy thông tin về số học sinh đã điểm danh trong lớp
+    const students =
+      await this.huggingfaceFaceService.getStudentsInClass(classId);
+    const attendanceStats =
+      await this.huggingfaceFaceService.getAttendanceStats(classId);
+
+    return {
+      statusCode: 200,
+      message: 'Lấy trạng thái stream thành công',
+      data: {
+        classId,
+        totalStudents: students.length,
+        studentsWithAvatars: students.filter((s) => s.avatar).length,
+        attendanceStats,
+        timestamp: new Date().toISOString(),
+      },
+    };
   }
 }

@@ -6,6 +6,7 @@ import { GoogleAIService } from './google-ai.service';
 import { Class } from '../entities/center/class.entity';
 import { Student } from '../entities/center/student.entity';
 import { Schedule } from '../entities/schedule.entity';
+import { Attendance } from '../entities/attendance.entity';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
@@ -26,6 +27,8 @@ export class HuggingfaceFaceService {
     private classRepository: Repository<Class>,
     @InjectRepository(Schedule)
     private scheduleRepository: Repository<Schedule>,
+    @InjectRepository(Attendance)
+    private attendanceRepository: Repository<Attendance>,
     private readonly attendanceService: AttendanceService,
     private readonly googleAIService: GoogleAIService,
   ) {}
@@ -530,6 +533,577 @@ export class HuggingfaceFaceService {
     } catch (error) {
       console.error('Error generating text with AI:', error);
       throw new BadRequestException(`Lỗi tạo text với AI: ${error.message}`);
+    }
+  }
+
+  /**
+   * Stream face recognition - Nhận diện khuôn mặt real-time từ camera stream
+   */
+  async streamFaceRecognition(
+    classId: number,
+    scheduleId: number,
+    imageFrame: string,
+    note?: string,
+  ): Promise<any> {
+    try {
+      // Validate input
+      if (!imageFrame) {
+        throw new BadRequestException('Không có frame ảnh được cung cấp');
+      }
+
+      // Load và validate image frame
+      const imageBuffer = await this.loadImage(imageFrame);
+      this.validateImage(imageBuffer);
+
+      // Lấy danh sách học sinh trong lớp
+      const students = await this.studentRepository
+        .createQueryBuilder('student')
+        .leftJoin('student.classes', 'class')
+        .where('class.id = :classId', { classId })
+        .andWhere('student.avatar IS NOT NULL')
+        .andWhere('student.avatar != ""')
+        .getMany();
+
+      if (students.length === 0) {
+        return {
+          statusCode: HttpStatus.OK,
+          message: 'Không có học sinh nào trong lớp có ảnh đại diện',
+          data: {
+            success: false,
+            recognizedStudents: [],
+            totalFacesDetected: 0,
+            message: 'Không có học sinh nào được nhận diện',
+          },
+        };
+      }
+
+      // Tạo descriptor cho frame hiện tại
+      const frameDescriptor = await this.generateFaceDescriptor(imageBuffer);
+      const recognizedStudents = [];
+      const processedStudents = new Set<number>(); // Tránh duplicate
+
+      // So sánh với từng học sinh trong lớp
+      for (const student of students) {
+        if (processedStudents.has(student.id)) {
+          continue; // Skip nếu đã xử lý
+        }
+
+        if (!this.isValidAvatar(student.avatar)) {
+          continue; // Skip nếu không có avatar hợp lệ
+        }
+
+        try {
+          // Load avatar của học sinh
+          const avatarBuffer = await this.loadImage(student.avatar);
+          const avatarDescriptor =
+            await this.generateFaceDescriptor(avatarBuffer);
+
+          // Tính similarity
+          const similarity = this.calculateSimilarity(
+            frameDescriptor,
+            avatarDescriptor,
+          );
+
+          // Kiểm tra AI nếu có
+          let aiConfidence = 0;
+          let aiMatch = false;
+
+          if (this.googleAIService.isAvailable()) {
+            try {
+              const aiPrompt = `Hãy phân tích kỹ lưỡng hai ảnh này và trả lời chính xác:
+              1. Hai ảnh có phải là cùng một người không?
+              2. Đưa ra tỷ lệ tương đồng từ 0-100%
+              3. Chỉ trả lời "CÙNG NGƯỜI" hoặc "KHÁC NGƯỜI" ở đầu câu trả lời`;
+
+              const aiAnalysis = await this.googleAIService.compareImages(
+                student.avatar,
+                imageFrame,
+                aiPrompt,
+              );
+
+              const aiResponse = aiAnalysis.toLowerCase();
+              if (aiResponse.includes('cùng người')) {
+                aiMatch = true;
+                const percentMatch = /([0-9]{1,3})%/.exec(aiResponse);
+                if (percentMatch) {
+                  aiConfidence = parseInt(percentMatch[1], 10) / 100;
+                } else {
+                  aiConfidence = 0.9;
+                }
+              }
+            } catch (aiError) {
+              console.warn(
+                `AI analysis failed for student ${student.id}:`,
+                aiError,
+              );
+            }
+          }
+
+          // Logic quyết định
+          let isMatch = false;
+          let finalConfidence = 0;
+
+          if (aiMatch && aiConfidence >= 0.8) {
+            isMatch = true;
+            finalConfidence = aiConfidence;
+          } else if (similarity >= this.similarityThreshold) {
+            if (aiMatch) {
+              isMatch = aiMatch && aiConfidence >= 0.7;
+              finalConfidence = Math.min(similarity, aiConfidence);
+            } else {
+              isMatch = similarity >= 0.95; // Ngưỡng cao hơn cho stream
+              finalConfidence = similarity;
+            }
+          }
+
+          if (isMatch) {
+            // Tạo attendance record
+            const schedule = await this.scheduleRepository.findOne({
+              where: { id: scheduleId },
+              relations: ['class', 'teacher'],
+            });
+
+            if (schedule) {
+              const attendanceData = {
+                studentId: student.id,
+                classId: schedule.class?.id || null,
+                teacherId: schedule.teacher?.id || null,
+                scheduleId,
+                status: 1, // present
+                note: note || 'Điểm danh qua stream recognition',
+              };
+
+              await this.attendanceService.markAttendance(attendanceData);
+            }
+
+            recognizedStudents.push({
+              studentId: student.id,
+              studentName: student.name,
+              confidence: finalConfidence,
+              timestamp: new Date().toISOString(),
+            });
+
+            processedStudents.add(student.id);
+          }
+        } catch (studentError) {
+          console.warn(`Error processing student ${student.id}:`, studentError);
+          continue;
+        }
+      }
+
+      // Ước tính số lượng khuôn mặt được phát hiện
+      const totalFacesDetected = recognizedStudents.length;
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Stream face recognition hoàn thành',
+        data: {
+          success: true,
+          recognizedStudents,
+          totalFacesDetected,
+          message: `Đã nhận diện ${recognizedStudents.length} học sinh trong lớp`,
+          timestamp: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      console.error('Error in stream face recognition:', error);
+      throw new BadRequestException(
+        `Lỗi stream face recognition: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Batch stream face recognition - Xử lý nhiều frame cùng lúc
+   */
+  async batchStreamFaceRecognition(
+    classId: number,
+    scheduleId: number,
+    imageFrames: string[],
+    note?: string,
+  ): Promise<any> {
+    try {
+      if (!imageFrames || imageFrames.length === 0) {
+        throw new BadRequestException('Không có frame ảnh được cung cấp');
+      }
+
+      const results = [];
+      const allRecognizedStudents = new Map<number, any>(); // studentId -> best result
+
+      for (let i = 0; i < imageFrames.length; i++) {
+        try {
+          const frameResult = await this.streamFaceRecognition(
+            classId,
+            scheduleId,
+            imageFrames[i],
+            `${note || 'Batch stream'} - Frame ${i + 1}`,
+          );
+
+          results.push({
+            frameIndex: i,
+            ...frameResult.data,
+          });
+
+          // Tích lũy kết quả tốt nhất cho mỗi học sinh
+          frameResult.data.recognizedStudents.forEach((student: any) => {
+            const existing = allRecognizedStudents.get(student.studentId);
+            if (!existing || student.confidence > existing.confidence) {
+              allRecognizedStudents.set(student.studentId, student);
+            }
+          });
+        } catch (frameError) {
+          console.warn(`Error processing frame ${i}:`, frameError);
+          results.push({
+            frameIndex: i,
+            success: false,
+            error: frameError.message,
+          });
+        }
+      }
+
+      const finalRecognizedStudents = Array.from(
+        allRecognizedStudents.values(),
+      );
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Batch stream face recognition hoàn thành',
+        data: {
+          success: true,
+          totalFrames: imageFrames.length,
+          processedFrames: results.length,
+          recognizedStudents: finalRecognizedStudents,
+          totalFacesDetected: finalRecognizedStudents.length,
+          message: `Đã xử lý ${results.length} frames và nhận diện ${finalRecognizedStudents.length} học sinh`,
+          frameResults: results,
+          timestamp: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      console.error('Error in batch stream face recognition:', error);
+      throw new BadRequestException(
+        `Lỗi batch stream face recognition: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Lấy danh sách học sinh trong lớp
+   */
+  async getStudentsInClass(classId: number): Promise<Student[]> {
+    try {
+      const students = await this.studentRepository
+        .createQueryBuilder('student')
+        .leftJoin('student.classes', 'class')
+        .where('class.id = :classId', { classId })
+        .select([
+          'student.id',
+          'student.name',
+          'student.studentId',
+          'student.avatar',
+        ])
+        .getMany();
+
+      return students;
+    } catch (error) {
+      console.error('Error getting students in class:', error);
+      throw new BadRequestException(
+        `Lỗi lấy danh sách học sinh: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Xác thực nhiều khuôn mặt cùng lúc cho một lớp học
+   */
+  async verifyClassFacesWithAI(
+    images: string[],
+    classId: number,
+    teacherId: number,
+    scheduleId: number,
+  ): Promise<any> {
+    try {
+      if (!images || images.length === 0) {
+        throw new BadRequestException('Không có ảnh được cung cấp');
+      }
+
+      // Lấy danh sách học sinh trong lớp
+      const students = await this.getStudentsInClass(classId);
+      if (students.length === 0) {
+        throw new BadRequestException('Không tìm thấy học sinh nào trong lớp');
+      }
+
+      // Lấy thông tin lịch học
+      const schedule = await this.scheduleRepository.findOne({
+        where: { id: scheduleId },
+        relations: ['class', 'teacher'],
+      });
+
+      if (!schedule) {
+        throw new BadRequestException('Không tìm thấy lịch học');
+      }
+
+      const results = [];
+      const recognizedStudents = new Map<number, any>(); // studentId -> best result
+      const processedImages = [];
+
+      // Xử lý từng ảnh
+      for (let i = 0; i < images.length; i++) {
+        const image = images[i];
+
+        try {
+          if (!image || !this.isValidAvatar(image)) {
+            console.warn(`Ảnh ${i + 1} không hợp lệ, bỏ qua`);
+            continue;
+          }
+
+          const imageBuffer = await this.loadImage(image);
+          this.validateImage(imageBuffer);
+
+          // Tìm học sinh phù hợp nhất cho ảnh này
+          let bestMatch = null;
+          let bestConfidence = 0;
+          let bestStudent = null;
+
+          for (const student of students) {
+            if (!student.avatar || !this.isValidAvatar(student.avatar)) {
+              continue; // Bỏ qua học sinh không có ảnh đại diện
+            }
+
+            try {
+              const avatarBuffer = await this.loadImage(student.avatar);
+
+              // Kiểm tra xem ảnh có giống nhau hoàn toàn không
+              if (imageBuffer.equals(avatarBuffer)) {
+                console.warn(
+                  `Ảnh ${i + 1} giống hệt ảnh đại diện của ${student.name}, bỏ qua`,
+                );
+                continue;
+              }
+
+              // Tạo descriptors
+              const inputDescriptor =
+                await this.generateFaceDescriptor(imageBuffer);
+              let registeredDescriptor = this.faceDescriptors.get(student.id);
+
+              if (!registeredDescriptor) {
+                registeredDescriptor =
+                  await this.generateFaceDescriptor(avatarBuffer);
+                this.faceDescriptors.set(student.id, registeredDescriptor);
+              }
+
+              // Tính similarity truyền thống
+              const traditionalSimilarity = this.calculateSimilarity(
+                registeredDescriptor,
+                inputDescriptor,
+              );
+
+              // Kiểm tra AI nếu có
+              let aiAnalysis = null;
+              let aiConfidence = 0;
+              let aiMatch = false;
+
+              if (this.googleAIService.isAvailable()) {
+                try {
+                  const aiPrompt = `Hãy phân tích kỹ lưỡng hai ảnh này và trả lời chính xác:
+                  1. Hai ảnh có phải là cùng một người không?
+                  2. Đưa ra tỷ lệ tương đồng từ 0-100%
+                  3. Nêu rõ các đặc điểm khác biệt nếu có
+                  4. Chỉ trả lời "CÙNG NGƯỜI" hoặc "KHÁC NGƯỜI" ở đầu câu trả lời`;
+
+                  aiAnalysis = await this.googleAIService.compareImages(
+                    student.avatar,
+                    image,
+                    aiPrompt,
+                  );
+
+                  // Parse AI response
+                  const aiResponse = aiAnalysis.toLowerCase();
+                  if (aiResponse.includes('cùng người')) {
+                    aiMatch = true;
+                    const percentMatch = /([0-9]{1,3})%/.exec(aiResponse);
+                    if (percentMatch) {
+                      aiConfidence = parseInt(percentMatch[1], 10) / 100;
+                    } else {
+                      aiConfidence = 0.9;
+                    }
+                  } else {
+                    aiMatch = false;
+                    aiConfidence = 0.1;
+                  }
+                } catch (aiError) {
+                  console.warn(
+                    `AI analysis failed for student ${student.id}:`,
+                    aiError,
+                  );
+                  aiAnalysis = null;
+                  aiMatch = false;
+                  aiConfidence = 0;
+                }
+              }
+
+              // Logic quyết định
+              let isMatch = false;
+              let finalConfidence = 0;
+
+              if (aiAnalysis && aiMatch && aiConfidence >= 0.8) {
+                isMatch = true;
+                finalConfidence = aiConfidence;
+              } else if (traditionalSimilarity >= this.similarityThreshold) {
+                if (aiAnalysis) {
+                  isMatch = aiMatch && aiConfidence >= 0.8;
+                  finalConfidence = Math.min(
+                    traditionalSimilarity,
+                    aiConfidence,
+                  );
+                } else {
+                  isMatch = traditionalSimilarity >= 0.98;
+                  finalConfidence = traditionalSimilarity;
+                }
+              }
+
+              // Cập nhật kết quả tốt nhất
+              if (isMatch && finalConfidence > bestConfidence) {
+                bestMatch = {
+                  studentId: student.id,
+                  studentName: student.name,
+                  studentCode: student.studentId,
+                  confidence: finalConfidence,
+                  traditionalSimilarity,
+                  aiAnalysis,
+                  aiMatch,
+                  aiConfidence,
+                };
+                bestConfidence = finalConfidence;
+                bestStudent = student;
+              }
+            } catch (studentError) {
+              console.warn(
+                `Error processing student ${student.id} for image ${i + 1}:`,
+                studentError,
+              );
+              continue;
+            }
+          }
+
+          // Xử lý kết quả tốt nhất cho ảnh này
+          if (bestMatch && bestStudent) {
+            // Tạo attendance record
+            const attendanceData = {
+              studentId: bestStudent.id,
+              classId: schedule.class?.id || null,
+              teacherId: schedule.teacher?.id || null,
+              scheduleId,
+              status: 1, // present
+              note: `Xác thực bằng khuôn mặt (Batch - Ảnh ${i + 1})`,
+            };
+
+            const attendance =
+              await this.attendanceService.markAttendance(attendanceData);
+
+            bestMatch.attendance = {
+              id: attendance.id,
+              status: attendance.status,
+              updatedAt: attendance.updatedAt,
+            };
+
+            // Cập nhật kết quả tốt nhất cho học sinh này
+            const existing = recognizedStudents.get(bestStudent.id);
+            if (!existing || bestMatch.confidence > existing.confidence) {
+              recognizedStudents.set(bestStudent.id, bestMatch);
+            }
+
+            results.push({
+              imageIndex: i,
+              success: true,
+              ...bestMatch,
+            });
+          } else {
+            results.push({
+              imageIndex: i,
+              success: false,
+              message: 'Không tìm thấy khuôn mặt phù hợp',
+            });
+          }
+
+          processedImages.push({
+            index: i,
+            processed: true,
+          });
+        } catch (imageError) {
+          console.error(`Error processing image ${i + 1}:`, imageError);
+          results.push({
+            imageIndex: i,
+            success: false,
+            error: imageError.message,
+          });
+        }
+      }
+
+      const finalRecognizedStudents = Array.from(recognizedStudents.values());
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Xác thực khuôn mặt hàng loạt hoàn thành',
+        data: {
+          success: true,
+          totalImages: images.length,
+          processedImages: processedImages.length,
+          recognizedStudents: finalRecognizedStudents,
+          totalFacesRecognized: finalRecognizedStudents.length,
+          results: results,
+          message: `Đã xử lý ${processedImages.length} ảnh và nhận diện ${finalRecognizedStudents.length} học sinh`,
+          timestamp: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      console.error('Error in verify class faces with AI:', error);
+      throw new BadRequestException(
+        `Lỗi xác thực khuôn mặt hàng loạt: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Lấy thống kê điểm danh cho lớp học
+   */
+  async getAttendanceStats(classId: number): Promise<any> {
+    try {
+      // Lấy danh sách học sinh trong lớp
+      const students = await this.getStudentsInClass(classId);
+
+      // Lấy thống kê điểm danh hôm nay
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+
+      // Đếm số học sinh đã điểm danh hôm nay
+      const attendanceCount = await this.attendanceRepository
+        .createQueryBuilder('attendance')
+        .leftJoin('attendance.class', 'class')
+        .where('class.id = :classId', { classId })
+        .andWhere('DATE(attendance.createdAt) = :today', { today: todayStr })
+        .andWhere('attendance.status = :status', { status: 1 }) // present
+        .getCount();
+
+      return {
+        today: {
+          present: attendanceCount,
+          absent: students.length - attendanceCount,
+          total: students.length,
+        },
+        date: todayStr,
+      };
+    } catch (error) {
+      console.error('Error getting attendance stats:', error);
+      return {
+        today: {
+          present: 0,
+          absent: 0,
+          total: 0,
+        },
+        date: new Date().toISOString().split('T')[0],
+        error: error.message,
+      };
     }
   }
 }
